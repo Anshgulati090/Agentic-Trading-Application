@@ -282,7 +282,7 @@ Dockerfile
 
 Clone the repository
 
-git clone https://github.com/YOUR_USERNAME/Agentic-Trading-Application.git
+git clone https://github.com/Anshgulati090/Agentic-Trading-Application.git
 
 cd Agentic-Trading-Application
 
