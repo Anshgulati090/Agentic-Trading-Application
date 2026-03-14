@@ -1,4 +1,5 @@
-from typing import Dict, Any
+from typing import Any, Dict
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -16,30 +17,37 @@ class SignalResponse(BaseModel):
 
 
 class DummyAgent(BaseAgent):
-
     def __init__(self) -> None:
-        self._last_explanation: str = "Initial dummy decision."
-        self._last_confidence: float = 0.5
+        self._last_explanation = "Initial dummy decision."
+        self._last_confidence = 0.5
 
     def generate_signal(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        symbol = str(market_data.get("symbol", "UNKNOWN"))
+        price = float(market_data.get("price", 0.0))
 
-        symbol = str(market_data.get("symbol") or "UNKNOWN")
-        price = float(market_data.get("price") or 0.0)
-
-        if price > 0:
-            action = "BUY"
-            self._last_confidence = 0.7
-            self._last_explanation = "DummyAgent: positive price, BUY signal."
-        else:
+        if price <= 0:
             action = "HOLD"
-            self._last_confidence = 0.4
-            self._last_explanation = "DummyAgent: non-positive price, HOLD."
+            confidence = 0.3
+            explanation = "Invalid price -> HOLD"
+        elif int(price) % 2 == 0:
+            action = "BUY"
+            confidence = 0.7
+            explanation = "Dummy rule: even price -> BUY"
+        else:
+            action = "SELL"
+            confidence = 0.6
+            explanation = "Dummy rule: odd price -> SELL"
+
+        self._last_confidence = confidence
+        self._last_explanation = explanation
 
         return {
             "symbol": symbol,
             "action": action,
-            "quantity": 1.0,
+            "quantity": 1,
             "price": price,
+            "confidence": confidence,
+            "timestamp": None,
         }
 
     def confidence_score(self) -> float:
@@ -49,7 +57,7 @@ class DummyAgent(BaseAgent):
         return self._last_explanation
 
 
-_agent = DummyAgent()
+agent = DummyAgent()
 
 
 @router.get("/{symbol}", response_model=SignalResponse)
@@ -57,15 +65,14 @@ def get_live_signal(
     symbol: str,
     service: LiveSignalService = Depends(get_live_signal_service),
 ):
-
     symbol = symbol.upper()
 
     try:
-        signal = service.get_live_signal(symbol, _agent, agent_name="dummy")
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        signal = service.get_live_signal(symbol, agent, agent_name="dummy")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
     return {
         "status": "success",
-        "data": signal
+        "data": signal,
     }

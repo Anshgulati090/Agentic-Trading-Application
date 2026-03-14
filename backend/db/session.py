@@ -3,12 +3,13 @@ from sqlalchemy.orm import sessionmaker, Session
 from backend.config.settings import get_settings
 
 settings = get_settings()
+database_url = settings.SUPABASE_DB_URL or settings.DATABASE_URL
+is_sqlite = database_url.startswith("sqlite")
 
 engine = create_engine(
-    settings.DATABASE_URL,
+    database_url,
+    connect_args={"check_same_thread": False} if is_sqlite else {},
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10,
     future=True
 )
 

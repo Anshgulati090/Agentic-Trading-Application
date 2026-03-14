@@ -6,6 +6,8 @@ const AGENTS = [
   { id: 'mean_reversion',label: 'Mean Reversion',   strategy: 'mean_reversion' },
   { id: 'risk_manager',  label: 'Risk Manager',     strategy: 'risk' },
   { id: 'executor',      label: 'Execution Agent',  strategy: 'execution' },
+  { id: 'llm_strategist',label: 'LLM Strategy Agent', strategy: 'llm' },
+  { id: 'factor_model',  label: 'Factor Model Agent', strategy: 'factor' },
 ];
 
 const STATE_STYLE = {

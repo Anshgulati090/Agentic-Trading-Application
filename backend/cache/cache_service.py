@@ -22,6 +22,7 @@ class CacheService:
     PREFIX_PORTFOLIO = "portfolio"
 
     DEFAULT_TTL_MARKET_SEC = 60
+    DEFAULT_TTL_CHART_SEC = 180
     DEFAULT_TTL_SIGNAL_SEC = 30
     DEFAULT_TTL_AGENT_MEMORY_SEC = 300
     DEFAULT_TTL_PORTFOLIO_SEC = 10
@@ -58,6 +59,14 @@ class CacheService:
         return self._redis.set_json(
             key, data, ttl_seconds=ttl_seconds or self.DEFAULT_TTL_MARKET_SEC
         )
+
+    def get_symbol_suggestions(self, query: str) -> Optional[list]:
+        key = self._key("symbol_suggestions", query.lower())
+        return self._redis.get_json(key)
+
+    def set_symbol_suggestions(self, query: str, data: list, ttl_seconds: Optional[int] = None) -> bool:
+        key = self._key("symbol_suggestions", query.lower())
+        return self._redis.set_json(key, data, ttl_seconds=ttl_seconds or self.DEFAULT_TTL_CHART_SEC)
 
     # ---- Signals ----
     def get_signal(self, symbol: str, agent_name: str) -> Optional[dict]:

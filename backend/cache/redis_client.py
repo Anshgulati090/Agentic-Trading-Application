@@ -4,6 +4,7 @@ Degrades gracefully when Redis is unavailable.
 """
 
 import json
+import time
 from typing import Any, Optional
 
 try:
@@ -22,9 +23,18 @@ class RedisClient:
     def __init__(self, url: str = "redis://localhost:6379/0") -> None:
         self._url = url
         self._client: Optional[Any] = None
+        self._last_healthcheck_at = 0.0
+        self._last_healthcheck_ok = False
         if REDIS_AVAILABLE:
             try:
-                self._client = redis.from_url(url, decode_responses=True)
+                self._client = redis.from_url(
+                    url,
+                    decode_responses=True,
+                    socket_connect_timeout=0.4,
+                    socket_timeout=0.4,
+                    retry_on_timeout=False,
+                    health_check_interval=30,
+                )
                 self._client.ping()
             except Exception:
                 self._client = None
@@ -33,10 +43,16 @@ class RedisClient:
     def is_available(self) -> bool:
         if not self._client:
             return False
+        if (time.time() - self._last_healthcheck_at) < 5:
+            return self._last_healthcheck_ok
         try:
             self._client.ping()
+            self._last_healthcheck_at = time.time()
+            self._last_healthcheck_ok = True
             return True
         except Exception:
+            self._last_healthcheck_at = time.time()
+            self._last_healthcheck_ok = False
             return False
 
     def get(self, key: str) -> Optional[str]:

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from backend.services.execution_service import ExecutionService
-from backend.schemas.trade_schema import TradeRequest, TradeResponse
+from backend.schemas.trade_schema import ExecuteAgentRequest, TradeResponse
 
 
 router = APIRouter(tags=["Agents"])
@@ -9,7 +9,7 @@ execution_service = ExecutionService()
 
 
 @router.post("/execute", response_model=TradeResponse)
-def execute_trade(signal: TradeRequest):
+def execute_trade(signal: ExecuteAgentRequest):
 
     try:
         result = execution_service.execute_trade(signal.model_dump())

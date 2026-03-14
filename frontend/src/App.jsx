@@ -1,162 +1,186 @@
-import { useState, useCallback, useEffect } from 'react';
-import Dashboard from './pages/Dashboard';
-import Signals   from './pages/Signals';
-import Portfolio from './pages/Portfolio';
-import Agents    from './pages/Agents';
-import { api }   from './services/api';
+import { useEffect, useState } from "react";
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import ErrorBoundary from "./components/ErrorBoundary";
+import AuthPage from "./components/AuthPage";
+import Dashboard from "./pages/Dashboard";
+import Profile from "./pages/Profile";
+import Agents from "./pages/Agents";
+import AgentDetail from "./pages/AgentDetail";
+import Portfolio from "./pages/Portfolio";
+import Signals from "./pages/Signals";
+import Landing from "./pages/Landing";
+import Learn from "./pages/Learn";
+import Markets from "./pages/Markets";
+import MarketDetail from "./pages/MarketDetail";
+import { searchMarkets } from "./data/marketCatalog";
+import { api, getStoredUser } from "./services/api";
 
-const NAV = [
-  { id: 'dashboard', label: 'Dashboard', icon: (
-    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
-  )},
-  { id: 'signals', label: 'Signals', icon: (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><path d="M1 11 L4 7 L7 9 L10 4 L13 6 L15 3" strokeLinecap="round" strokeLinejoin="round"/></svg>
-  )},
-  { id: 'portfolio', label: 'Portfolio', icon: (
-    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5"><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 2v5l3 3-1.4 1.4L6 9.8V3h2z" fillRule="evenodd" clipRule="evenodd"/></svg>
-  )},
-  { id: 'agents', label: 'Agents', icon: (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-3.5 h-3.5"><circle cx="8" cy="5" r="2.5"/><path d="M3 13c0-2.76 2.24-5 5-5s5 2.24 5 5" strokeLinecap="round"/></svg>
-  )},
-];
+function ProtectedRoute({ user, children }) {
+  return user ? children : <Navigate to="/login" replace />;
+}
 
-const PAGES = { dashboard: Dashboard, signals: Signals, portfolio: Portfolio, agents: Agents };
+function Navbar({ user, onLogout }) {
+  const [search, setSearch] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
 
-function HealthBadge() {
-  const [status, setStatus] = useState('checking');
-  const [latency, setLatency] = useState(null);
-
-  const check = useCallback(async () => {
-    const t0 = performance.now();
-    try {
-      const res = await api.getHealth();
-      setLatency(Math.round(performance.now() - t0));
-      setStatus(res !== null ? 'online' : 'degraded');
-    } catch {
-      setStatus('offline');
-      setLatency(null);
+  useEffect(() => {
+    if (!search.trim()) {
+      setSuggestions([]);
+      return;
     }
-  }, []);
+    const timer = window.setTimeout(() => {
+      api.suggestSymbols(search.trim(), 6).then((items) => setSuggestions(items ?? [])).catch(() => setSuggestions([]));
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-  useEffect(() => { check(); const t = setInterval(check, 15000); return () => clearInterval(t); }, [check]);
+  const goToSymbol = async (value) => {
+    const normalized = value.trim();
+    if (!normalized) return;
+    const resolved = await api.resolveSymbol(normalized).catch(() => null);
+    const profile = resolved ?? searchMarkets(normalized).find((item) => item.symbol === normalized.toUpperCase());
+    if (profile?.symbol) {
+      navigate(`/markets/${profile.symbol}`);
+    } else {
+      navigate(`/markets?q=${encodeURIComponent(normalized)}`);
+    }
+    setSearch("");
+    setOpen(false);
+  };
 
-  const COLOR = { online: 'text-emerald-400', degraded: 'text-amber-400', offline: 'text-red-400', checking: 'text-zinc-500' };
-  const DOT   = { online: 'bg-emerald-400', degraded: 'bg-amber-400', offline: 'bg-red-400', checking: 'bg-zinc-600' };
+  const submit = async (event) => {
+    event.preventDefault();
+    await goToSymbol(search);
+  };
+
+  const isActive = (to) => {
+    if (to === "/") return location.pathname === "/";
+    return location.pathname === to || location.pathname.startsWith(`${to}/`);
+  };
+
+  const navItem = (to, label) => (
+    <Link to={to} className={`text-sm ${isActive(to) ? "text-cyan-300" : "text-zinc-400 hover:text-zinc-100"}`}>{label}</Link>
+  );
 
   return (
-    <div className="flex items-center gap-1.5 cursor-default" title={latency ? `${latency}ms` : undefined}>
-      <span className={`w-1.5 h-1.5 rounded-full ${DOT[status]} ${status === 'online' ? 'animate-pulse' : ''}`} />
-      <span className={`text-[10px] font-mono uppercase tracking-widest ${COLOR[status]}`}>{status}</span>
-      {latency && <span className="text-[10px] font-mono text-zinc-700">{latency}ms</span>}
-    </div>
+    <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur px-4 py-3">
+      <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-4 justify-between">
+        <Link to="/" className="text-zinc-100 font-semibold tracking-tight">AgenticTrading</Link>
+        <nav className="flex items-center gap-4">
+          {navItem("/", "Home")}
+          {navItem("/markets", "Markets")}
+          {navItem("/learn", "Learn")}
+          {navItem("/dashboard", "Dashboard")}
+          {user && navItem("/profile", "Profile")}
+          {!user && navItem("/login", "Login")}
+          {!user && navItem("/signup", "Signup")}
+        </nav>
+        <div className="flex items-center gap-3">
+          <div className="relative">
+            <form onSubmit={submit}>
+              <input
+                value={search}
+                onFocus={() => setOpen(true)}
+                onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search Nvidia, Tesla, Bitcoin"
+                className="w-64 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+              />
+            </form>
+            {open && suggestions.length > 0 && (
+              <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl overflow-hidden">
+                {suggestions.map((item) => (
+                  <button
+                    key={item.symbol}
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => goToSymbol(item.symbol)}
+                    className="w-full px-4 py-3 text-left hover:bg-zinc-900 transition"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-zinc-100">{item.name}</div>
+                        <div className="text-xs text-zinc-500 mt-1">{item.symbol} - {item.type}</div>
+                      </div>
+                      <span className="text-[10px] uppercase tracking-widest text-cyan-300">{item.exchange}</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {user && (
+            <button onClick={onLogout} className="rounded border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:border-cyan-500 hover:text-cyan-300">
+              Logout
+            </button>
+          )}
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function Shell({ user, setUser }) {
+  const navigate = useNavigate();
+
+  const handleLogin = async ({ email, password }) => {
+    const loggedIn = await api.login(email, password);
+    setUser(loggedIn);
+    navigate("/dashboard");
+  };
+
+  const handleSignup = async ({ email, password, display_name }) => {
+    const registered = await api.register({ email, password, display_name });
+    setUser(registered);
+    navigate("/dashboard");
+  };
+
+  const handleLogout = async () => {
+    await api.logout();
+    setUser(null);
+    navigate("/");
+  };
+
+  return (
+    <>
+      <Navbar user={user} onLogout={handleLogout} />
+      <main className="min-h-[calc(100vh-72px)] bg-zinc-950 text-zinc-100">
+        <div className="max-w-7xl mx-auto px-4 py-6">
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/learn" element={<Learn />} />
+            <Route path="/markets" element={<Markets />} />
+            <Route path="/markets/:symbol" element={<MarketDetail />} />
+            <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <AuthPage mode="login" onSubmit={handleLogin} />} />
+            <Route path="/signup" element={user ? <Navigate to="/dashboard" replace /> : <AuthPage mode="signup" onSubmit={handleSignup} />} />
+            <Route path="/dashboard" element={<ProtectedRoute user={user}><Dashboard /></ProtectedRoute>} />
+            <Route path="/profile" element={<ProtectedRoute user={user}><Profile /></ProtectedRoute>} />
+            <Route path="/signals" element={<ProtectedRoute user={user}><Signals /></ProtectedRoute>} />
+            <Route path="/portfolio" element={<ProtectedRoute user={user}><Portfolio /></ProtectedRoute>} />
+            <Route path="/agents" element={<ProtectedRoute user={user}><Agents /></ProtectedRoute>} />
+            <Route path="/agents/:agentId" element={<ProtectedRoute user={user}><AgentDetail /></ProtectedRoute>} />
+          </Routes>
+        </div>
+      </main>
+    </>
   );
 }
 
 export default function App() {
-  const [page, setPage]         = useState('dashboard');
-  const [mobileOpen, setMobile] = useState(false);
-  const [time, setTime]         = useState(new Date());
-  const Page = PAGES[page];
+  const [user, setUser] = useState(() => getStoredUser());
 
   useEffect(() => {
-    const t = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(t);
+    if (!user) return;
+    api.getMe().then(setUser).catch(() => setUser(null));
   }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex overflow-hidden" style={{ height: '100dvh' }}>
-
-      {/* Sidebar */}
-      <aside className={`
-        shrink-0 w-52 bg-zinc-900 border-r border-zinc-800 flex flex-col z-50
-        fixed inset-y-0 left-0 transition-transform duration-200
-        ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:sticky lg:top-0 lg:h-screen
-      `}>
-        {/* Logo */}
-        <div className="p-5 border-b border-zinc-800 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg border border-cyan-500/40 bg-cyan-500/8 flex items-center justify-center shrink-0">
-              <span className="text-cyan-400 text-[10px] font-bold tracking-wider">AGT</span>
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-zinc-100 tracking-tight truncate">AgenticTrading</div>
-              <div className="text-[9px] text-zinc-600 font-mono uppercase tracking-widest">Multi-Agent Platform</div>
-            </div>
-          </div>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 p-2.5 space-y-0.5 overflow-y-auto">
-          {NAV.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => { setPage(item.id); setMobile(false); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-sm transition-all text-left ${
-                page === item.id
-                  ? 'bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 shadow-sm'
-                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 border border-transparent'
-              }`}
-            >
-              <span className="shrink-0">{item.icon}</span>
-              <span className="font-medium">{item.label}</span>
-              {page === item.id && <span className="ml-auto w-1 h-1 rounded-full bg-cyan-400" />}
-            </button>
-          ))}
-        </nav>
-
-        {/* Footer */}
-        <div className="p-4 border-t border-zinc-800 space-y-2 shrink-0">
-          <HealthBadge />
-          <div className="text-[9px] font-mono text-zinc-700 space-y-0.5">
-            <div>API: localhost:8000</div>
-            <div>WS:  localhost:8000</div>
-          </div>
-        </div>
-      </aside>
-
-      {/* Mobile overlay */}
-      {mobileOpen && (
-        <div className="fixed inset-0 bg-black/70 z-40 lg:hidden backdrop-blur-sm" onClick={() => setMobile(false)} />
-      )}
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800/80 px-4 sm:px-5 py-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <button
-              className="lg:hidden p-1.5 rounded text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
-              onClick={() => setMobile(!mobileOpen)}
-              aria-label="Toggle menu"
-            >
-              <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
-                <rect x="1" y="3" width="14" height="1.5" rx="0.75"/>
-                <rect x="1" y="7.25" width="14" height="1.5" rx="0.75"/>
-                <rect x="1" y="11.5" width="14" height="1.5" rx="0.75"/>
-              </svg>
-            </button>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-zinc-200 capitalize">{page}</span>
-              <span className="text-zinc-700 text-xs hidden sm:inline">·</span>
-              <span className="text-xs text-zinc-600 font-mono hidden sm:inline">
-                {time.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-mono text-zinc-600 tabular-nums hidden sm:inline">
-              {time.toLocaleTimeString('en-US', { hour12: false })}
-            </span>
-            <HealthBadge />
-          </div>
-        </header>
-
-        {/* Page */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-5 lg:p-6">
-          <Page />
-        </main>
-      </div>
-    </div>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Shell user={user} setUser={setUser} />
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
