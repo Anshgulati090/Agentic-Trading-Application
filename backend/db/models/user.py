@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from backend.db.base import Base
@@ -11,13 +11,21 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
     full_name = Column(String, nullable=True)
+    username = Column(String, unique=True, index=True, nullable=True)
+    display_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     is_active = Column(Boolean, default=True)
     is_demo_user = Column(Boolean, default=True)
+    demo_balance = Column(Float, default=100_000.0, nullable=False)
+    preferences_json = Column(Text, nullable=True, default="{}")
+    email_verified = Column(Boolean, default=False, nullable=False)
+    verification_token = Column(String, nullable=True, index=True)
+    verification_sent_at = Column(DateTime, nullable=True)
 
     # Relationships
     demo_account = relationship("DemoAccount", back_populates="user", uselist=False, cascade="all, delete-orphan")
     demo_trades = relationship("DemoTrade", back_populates="user", cascade="all, delete-orphan")
+    learning_account = relationship("LearningAccount", uselist=False, cascade="all, delete-orphan")
 
 
 class DemoAccount(Base):

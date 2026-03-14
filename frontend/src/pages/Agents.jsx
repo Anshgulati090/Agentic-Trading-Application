@@ -1,88 +1,90 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../services/api';
 
 function AgentCard({ agent, onExecute }) {
   const [state, setState] = useState('idle');
-  const [result, setResult] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [understood, setUnderstood] = useState(false);
+  const [result, setResult] = useState(null);
 
   const run = async () => {
     setState('running');
     setResult(null);
     try {
-      const res = await onExecute(agent);
+      const response = await onExecute(agent);
       setState('success');
-      setResult(res);
+      setResult(response);
     } catch (error) {
       setState('error');
-      setResult(error?.message ?? 'Execution failed');
+      setResult(error?.message || 'Execution failed');
     }
-    setTimeout(() => setState('idle'), 5000);
+    window.setTimeout(() => setState('idle'), 4000);
   };
 
-  const stateRing = {
-    running: 'border-amber-400/50',
-    success: 'border-emerald-400/50',
-    error: 'border-red-400/50',
-    idle: 'border-zinc-800 hover:border-zinc-700',
-  };
+  const tone = {
+    idle: 'border-zinc-800 bg-zinc-900/55 hover:border-zinc-700',
+    running: 'border-amber-500/35 bg-amber-500/8',
+    success: 'border-emerald-500/35 bg-emerald-500/8',
+    error: 'border-red-500/35 bg-red-500/8',
+  }[state];
 
-  const dot = { running: 'bg-amber-400 animate-pulse', success: 'bg-emerald-400', error: 'bg-red-400', idle: 'bg-zinc-600' };
+  const dot = {
+    idle: 'bg-zinc-600',
+    running: 'bg-amber-400 animate-pulse',
+    success: 'bg-emerald-400',
+    error: 'bg-red-400',
+  }[state];
 
   return (
-    <div className={`bg-zinc-900/60 border rounded-lg p-4 transition-all ${stateRing[state]}`}>
-      <div className="flex items-start justify-between mb-3 gap-3">
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full shrink-0 mt-0.5 ${dot[state]}`} />
-          <div>
-            <div className="text-sm text-zinc-200 font-medium">{agent.label}</div>
-            <div className="text-[10px] text-zinc-600 font-mono uppercase tracking-wider">{agent.strategy}</div>
+    <article className={`rounded-[26px] border p-5 transition-all ${tone}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className={`h-2 w-2 rounded-full ${dot}`} />
+            <span className="text-sm text-zinc-100">{agent.label}</span>
           </div>
+          <div className="mt-2 text-[10px] font-mono uppercase tracking-[0.28em] text-zinc-600">{agent.strategy}</div>
         </div>
-        <button onClick={() => setExpanded((value) => !value)} className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded border border-zinc-700 text-zinc-400 hover:border-cyan-500 hover:text-cyan-400 transition-colors shrink-0">
-          {expanded ? 'Hide Crux' : 'View Crux'}
+        <button type="button" onClick={() => setExpanded((value) => !value)} className="btn-ghost">
+          {expanded ? 'Hide brief' : 'View brief'}
         </button>
       </div>
 
-      <p className="text-xs text-zinc-500 leading-relaxed mb-3">{agent.learning_goal}</p>
+      <p className="mt-4 text-sm leading-7 text-zinc-500">{agent.learning_goal}</p>
 
-      {expanded && (
-        <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-3 mb-3">
-          <div className="text-[10px] font-mono uppercase tracking-widest text-cyan-300 mb-2">Agent Crux</div>
-          <p className="text-xs text-zinc-300 leading-relaxed">{agent.crux}</p>
-          <label className="mt-3 flex items-start gap-2 text-xs text-zinc-300">
-            <input type="checkbox" checked={understood} onChange={(e) => setUnderstood(e.target.checked)} className="mt-0.5" />
-            <span>I understand what this agent will try to do before using it.</span>
-          </label>
-        </div>
-      )}
-
-      <div className="flex flex-wrap gap-1 mb-3">
-        {(agent.params ?? []).map((param) => (
-          <span key={param} className="text-[9px] font-mono text-zinc-600 bg-zinc-800 px-1.5 py-0.5 rounded">{param}</span>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {(agent.params || []).map((param) => (
+          <span key={param} className="rounded-full border border-zinc-800 bg-zinc-950/55 px-3 py-1 text-[10px] font-mono uppercase tracking-[0.22em] text-zinc-500">
+            {param}
+          </span>
         ))}
       </div>
 
-      <Link to={`/agents/${agent.id}`} className="inline-flex mb-3 text-[10px] font-mono uppercase tracking-wider text-cyan-300 hover:text-cyan-200">
-        Open explanation page
-      </Link>
+      {expanded ? (
+        <div className="mt-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/7 p-4">
+          <div className="section-kicker mb-2 text-cyan-300">Agent brief</div>
+          <p className="text-sm leading-7 text-zinc-300">{agent.crux}</p>
+          <label className="mt-4 flex items-start gap-3 text-sm text-zinc-300">
+            <input type="checkbox" checked={understood} onChange={(event) => setUnderstood(event.target.checked)} className="mt-1" />
+            <span>I understand what this agent is trying to do before I execute it.</span>
+          </label>
+        </div>
+      ) : null}
 
-      <button
-        onClick={run}
-        disabled={state === 'running' || !understood}
-        className="text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded border border-zinc-700 text-zinc-400 hover:border-cyan-500 hover:text-cyan-400 transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-      >
-        {state === 'running' ? 'Running...' : state === 'success' ? 'Done' : 'Execute'}
-      </button>
+      <div className="mt-5 flex flex-wrap items-center gap-3">
+        <Link to={`/agents/${agent.id}`} className="btn-ghost">Explanation page</Link>
+        <button type="button" onClick={run} disabled={state === 'running' || !understood} className="btn-primary disabled:opacity-40">
+          {state === 'running' ? 'Running...' : 'Execute agent'}
+        </button>
+      </div>
 
-      {result && (
-        <div className={`mt-3 pt-3 border-t border-zinc-800 text-xs font-mono ${state === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
+      {result ? (
+        <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm font-mono ${state === 'error' ? 'border-red-500/25 bg-red-500/8 text-red-300' : 'border-emerald-500/25 bg-emerald-500/8 text-emerald-300'}`}>
           {typeof result === 'object' ? JSON.stringify(result) : String(result)}
         </div>
-      )}
-    </div>
+      ) : null}
+    </article>
   );
 }
 
@@ -93,18 +95,89 @@ export default function Agents() {
     api.getLearningAgents().then(setAgents).catch(() => setAgents([]));
   }, []);
 
-  const handleExecute = useCallback(async (agent) => {
-    return api.executeAgent({ agent_id: agent.id, strategy: agent.strategy });
-  }, []);
+  const execute = useCallback((agent) => api.executeAgent({ agent_id: agent.id, strategy: agent.strategy }), []);
+
+  const summary = useMemo(
+    () => [
+      { label: 'Agents', value: `${agents.length || 6}`, sub: 'Interactive strategy modules' },
+      { label: 'Use case', value: 'Education first', sub: 'Every agent comes with a why' },
+      { label: 'Mode', value: 'Demo safe', sub: 'No real broker execution' },
+    ],
+    [agents.length],
+  );
 
   return (
-    <div className="space-y-4">
-      <div className="bg-zinc-900/60 border border-zinc-800 rounded-lg p-4">
-        <h2 className="text-zinc-100 font-light text-xl tracking-tight">Agent Control Panel</h2>
-        <p className="text-zinc-500 text-xs font-mono mt-0.5">Review the crux first, then use each agent hands-on.</p>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {agents.map((agent) => <AgentCard key={agent.id} agent={agent} onExecute={handleExecute} />)}
+    <div className="space-y-6">
+      <section className="page-hero">
+        <div className="hero-glow" />
+        <div className="relative grid gap-6 px-6 py-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
+          <div>
+            <div className="section-kicker mb-3">AI agents</div>
+            <h1 className="text-3xl font-light tracking-tight text-zinc-100 sm:text-4xl">
+              Learn what each agent is designed to see, why it acts, and when it should stay out.
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-400">
+              This page is intentionally educational. Before you click execute, review the agent's brief so you understand the setup, the edge it seeks, and the risk it is trying to manage.
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              {summary.map((item) => (
+                <div key={item.label} className="rounded-2xl border border-zinc-800/80 bg-zinc-950/45 p-4">
+                  <div className="section-kicker mb-2">{item.label}</div>
+                  <div className="text-lg text-zinc-100">{item.value}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{item.sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[26px] border border-zinc-800/80 bg-zinc-950/45 p-5">
+            <div className="panel-title"><span>How to use this page</span></div>
+            <div className="space-y-3 text-sm text-zinc-400">
+              <p>1. Read the agent brief.</p>
+              <p>2. Confirm you understand the crux.</p>
+              <p>3. Execute in demo mode to see how the system responds.</p>
+              <p>4. Compare the output with the dashboard signal stream and the market detail page.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-[1.45fr_0.55fr]">
+        <section className="grid gap-5 md:grid-cols-2">
+          {agents.map((agent) => (
+            <AgentCard key={agent.id} agent={agent} onExecute={execute} />
+          ))}
+        </section>
+
+        <aside className="space-y-5">
+          <section className="panel p-5">
+            <div className="panel-title"><span>Agent families</span></div>
+            <div className="space-y-3">
+              {[
+                ['Momentum', 'Trend-following and continuation setups'],
+                ['Mean reversion', 'Contrarian entries after stretched moves'],
+                ['Risk', 'Position sizing and capital preservation'],
+                ['Execution', 'Trade delivery and fill logic'],
+                ['Factor', 'Cross-sectional ranking and selection'],
+                ['LLM strategy', 'Narrative and context interpretation'],
+              ].map(([title, desc]) => (
+                <div key={title} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
+                  <div className="text-sm text-zinc-100">{title}</div>
+                  <div className="mt-1 text-sm text-zinc-500">{desc}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel p-5">
+            <div className="panel-title"><span>Continue learning</span></div>
+            <div className="space-y-3">
+              <Link to="/learn" className="btn-primary block text-center">Open learning hub</Link>
+              <Link to="/dashboard" className="btn-ghost block text-center">Compare on dashboard</Link>
+              <Link to="/markets/AAPL" className="btn-ghost block text-center">Test on a market page</Link>
+            </div>
+          </section>
+        </aside>
       </div>
     </div>
   );

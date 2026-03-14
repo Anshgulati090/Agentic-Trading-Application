@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
 import { api, BROKERS } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useSignalStream } from '../hooks/useSignalStream';
@@ -12,56 +12,39 @@ function SignalBadge({ signal }) {
   return <span className={cls[signal] || 'badge-hold'}>{signal}</span>;
 }
 
-function StatRow({ label, value, sub }) {
+function StatRow({ label, value }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-zinc-800/60 last:border-0">
-      <span className="text-xs text-zinc-500 font-mono">{label}</span>
-      <div className="text-right">
-        <span className="text-xs text-zinc-200 font-mono">{value ?? '—'}</span>
-        {sub && <div className="text-[10px] text-zinc-600 font-mono">{sub}</div>}
-      </div>
+    <div className="flex items-center justify-between border-b border-zinc-800/80 py-3 text-sm last:border-0">
+      <span className="section-kicker">{label}</span>
+      <span className="font-mono text-zinc-200">{value ?? '-'}</span>
     </div>
   );
 }
 
-function BrokerRedirect({ symbol }) {
-  const [show, setShow] = useState(false);
+function BrokerRedirect() {
+  const [open, setOpen] = useState(false);
+
   return (
-    <div>
-      <button
-        onClick={() => setShow(s => !s)}
-        className="w-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/30 hover:border-amber-400/50 text-amber-400 font-semibold py-3 rounded-xl text-sm transition-all"
-      >
-        💰 Trade Real Money →
+    <div className="space-y-3">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="btn-ghost w-full">
+        Trade with Real Broker
       </button>
-      {show && (
-        <div className="mt-3 p-4 bg-zinc-900 border border-zinc-700 rounded-xl animate-slide-up">
-          <p className="text-xs text-zinc-400 mb-3 leading-relaxed">
-            AgenticTrading is for <strong className="text-zinc-200">learning only</strong>. To trade real money, use a licensed broker:
-          </p>
-          <div className="space-y-2">
-            {BROKERS.map(b => (
-              <a
-                key={b.name}
-                href={b.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 p-3 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
-              >
-                <span className="text-xl">{b.logo}</span>
-                <div>
-                  <div className="text-sm font-medium text-zinc-100">{b.name}</div>
-                  <div className="text-xs text-zinc-500">{b.description}</div>
-                </div>
-                <span className="ml-auto text-zinc-600">↗</span>
-              </a>
-            ))}
-          </div>
-          <p className="text-[10px] text-zinc-700 font-mono mt-3">
-            AgenticTrading is not affiliated with these brokers. Use at your own risk.
-          </p>
+      {open ? (
+        <div className="space-y-2">
+          {BROKERS.map((broker) => (
+            <a
+              key={broker.name}
+              href={broker.url}
+              target="_blank"
+              rel="noreferrer"
+              className="block rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70"
+            >
+              <div className="text-sm text-zinc-100">{broker.name}</div>
+              <div className="mt-1 text-sm text-zinc-500">{broker.description}</div>
+            </a>
+          ))}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -69,26 +52,27 @@ function BrokerRedirect({ symbol }) {
 function DemoTradePanel({ symbol, currentPrice }) {
   const { isAuthenticated } = useAuth();
   const [action, setAction] = useState('BUY');
-  const [qty, setQty] = useState('10');
+  const [quantity, setQuantity] = useState('10');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
 
-  const handleTrade = async () => {
-    if (!currentPrice) return;
+  const total = (Number(quantity) || 0) * (currentPrice || 0);
+
+  const execute = async () => {
     setLoading(true);
     setError('');
     setResult(null);
     try {
-      const res = await api.executeDemoTrade({
+      const response = await api.executeDemoTrade({
         symbol,
         action,
-        quantity: parseFloat(qty),
+        quantity: Number(quantity),
         price: currentPrice,
       });
-      setResult(res);
-    } catch (e) {
-      setError(e.message);
+      setResult(response);
+    } catch (err) {
+      setError(err?.message || 'Unable to place paper trade');
     } finally {
       setLoading(false);
     }
@@ -96,68 +80,61 @@ function DemoTradePanel({ symbol, currentPrice }) {
 
   if (!isAuthenticated) {
     return (
-      <div className="text-center py-4">
-        <p className="text-sm text-zinc-500 mb-3">Sign in to paper trade {symbol}</p>
-        <Link to="/login" className="btn-primary text-sm">Sign In to Trade</Link>
+      <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-8 text-center">
+        <div className="text-sm text-zinc-500">Sign in to place practice trades on {symbol}.</div>
+        <Link to="/login" className="btn-primary mt-4 inline-flex">Sign In</Link>
       </div>
     );
   }
 
-  const total = (parseFloat(qty) || 0) * (currentPrice || 0);
-
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        {['BUY', 'SELL'].map(a => (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        {['BUY', 'SELL'].map((side) => (
           <button
-            key={a}
-            onClick={() => setAction(a)}
-            className={`py-2.5 rounded-lg text-sm font-semibold transition-colors ${
-              action === a
-                ? a === 'BUY'
-                  ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-400'
-                  : 'bg-red-500/20 border border-red-500/50 text-red-400'
-                : 'bg-zinc-800 border border-zinc-700 text-zinc-500 hover:text-zinc-300'
+            key={side}
+            type="button"
+            onClick={() => setAction(side)}
+            className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-all ${
+              action === side
+                ? side === 'BUY'
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
+                  : 'border-red-500/40 bg-red-500/10 text-red-400'
+                : 'border-zinc-800 bg-zinc-950/35 text-zinc-500 hover:border-zinc-700'
             }`}
           >
-            {a}
+            {side}
           </button>
         ))}
       </div>
-      <div>
-        <label className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider block mb-1.5">Quantity</label>
-        <input
-          type="number"
-          min="0.001"
-          step="1"
-          value={qty}
-          onChange={e => setQty(e.target.value)}
-          className="input"
-          placeholder="10"
-        />
+
+      <div className="space-y-3">
+        <div>
+          <label className="section-kicker mb-2 block">Quantity</label>
+          <input type="number" min="0.001" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="input" />
+        </div>
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
+          <div className="section-kicker mb-2">Preview</div>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="text-zinc-500">Action</div>
+            <div className="text-right font-mono text-zinc-200">{action}</div>
+            <div className="text-zinc-500">Execution price</div>
+            <div className="text-right font-mono text-zinc-200">{currentPrice ? `$${currentPrice.toFixed(2)}` : '-'}</div>
+            <div className="text-zinc-500">Estimated total</div>
+            <div className="text-right font-mono text-zinc-200">${total.toFixed(2)}</div>
+          </div>
+        </div>
       </div>
-      {currentPrice && (
-        <div className="flex justify-between text-xs font-mono text-zinc-500">
-          <span>@ ${currentPrice.toFixed(2)}</span>
-          <span className="text-zinc-300">Total: ${total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</span>
+
+      {error ? <div className="rounded-2xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-300">{error}</div> : null}
+      {result ? (
+        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-300">
+          Practice trade executed. New balance: ${Number(result.new_balance || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
         </div>
-      )}
-      {error && <div className="text-xs font-mono text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>}
-      {result && (
-        <div className="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">
-          ✓ {result.action} {result.quantity} {result.symbol} @ ${result.price?.toFixed(2)} — Balance: ${result.new_balance?.toLocaleString('en-US', { maximumFractionDigits: 2 })}
-        </div>
-      )}
-      <button
-        onClick={handleTrade}
-        disabled={loading || !currentPrice || !parseFloat(qty)}
-        className={`w-full py-3 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-          action === 'BUY'
-            ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-900'
-            : 'bg-red-500 hover:bg-red-400 text-zinc-100'
-        }`}
-      >
-        {loading ? 'Executing…' : `Paper ${action} ${qty || '?'} ${symbol}`}
+      ) : null}
+
+      <button type="button" onClick={execute} disabled={loading || !currentPrice || !Number(quantity)} className="btn-primary w-full disabled:opacity-40">
+        {loading ? 'Executing...' : `Place ${action} Practice Trade`}
       </button>
     </div>
   );
@@ -165,193 +142,210 @@ function DemoTradePanel({ symbol, currentPrice }) {
 
 export default function MarketDetail() {
   const { symbol } = useParams();
-  const sym = symbol?.toUpperCase() || 'AAPL';
+  const activeSymbol = (symbol || 'AAPL').toUpperCase();
   const [priceData, setPriceData] = useState(null);
   const [info, setInfo] = useState(null);
-  const [priceLoading, setPriceLoading] = useState(true);
-  const { messages, status } = useSignalStream(sym, 30);
+  const [loading, setLoading] = useState(true);
+  const { messages, status } = useSignalStream(activeSymbol, 20);
 
-  const loadPrice = useCallback(async () => {
+  const loadQuote = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await api.getMarketPrice(sym);
-      setPriceData(res?.data || res);
-    } catch {}
-    finally { setPriceLoading(false); }
-  }, [sym]);
-
-  useEffect(() => { loadPrice(); const t = setInterval(loadPrice, 5000); return () => clearInterval(t); }, [loadPrice]);
+      const payload = await api.getMarketPrice(activeSymbol);
+      setPriceData(payload?.data || payload);
+    } catch {
+      setPriceData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeSymbol]);
 
   useEffect(() => {
-    api.getSymbolInfo(sym).then(r => setInfo(r?.data)).catch(() => {});
-  }, [sym]);
+    setPriceData(null);
+    setInfo(null);
+    loadQuote();
+    const timer = window.setInterval(loadQuote, 7000);
+    return () => window.clearInterval(timer);
+  }, [loadQuote]);
+
+  useEffect(() => {
+    api.getSymbolInfo(activeSymbol).then((payload) => setInfo(payload?.data || payload)).catch(() => setInfo(null));
+  }, [activeSymbol]);
 
   const price = priceData?.price;
   const change = priceData?.change;
   const changePct = priceData?.change_pct;
-  const isPos = (change ?? 0) >= 0;
-
+  const positive = (change ?? 0) >= 0;
   const latestSignal = messages[0];
 
+  const summaryStats = useMemo(
+    () => [
+      { label: 'Open', value: priceData?.open != null ? `$${Number(priceData.open).toFixed(2)}` : '-' },
+      { label: 'Day high', value: priceData?.high != null ? `$${Number(priceData.high).toFixed(2)}` : '-' },
+      { label: 'Day low', value: priceData?.low != null ? `$${Number(priceData.low).toFixed(2)}` : '-' },
+      { label: 'Volume', value: priceData?.volume != null ? `${(Number(priceData.volume) / 1e6).toFixed(1)}M` : '-' },
+    ],
+    [priceData],
+  );
+
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      {/* Header */}
-      <div className="border-b border-zinc-800 bg-zinc-900/20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <Link to="/markets" className="text-zinc-600 hover:text-zinc-400 transition-colors text-sm">← Markets</Link>
-              <span className="text-zinc-800">/</span>
+    <div className="space-y-6">
+      <section className="page-hero">
+        <div className="hero-glow" />
+        <div className="relative grid gap-6 px-6 py-6 lg:grid-cols-[1.15fr_0.85fr] lg:px-8">
+          <div>
+            <div className="section-kicker mb-3">Market detail</div>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-light tracking-tight text-zinc-100 sm:text-4xl">{activeSymbol}</h1>
+              {latestSignal?.signal ? <SignalBadge signal={latestSignal.signal} /> : null}
+            </div>
+            <p className="mt-2 text-sm text-zinc-500">{info?.name || 'Live market view with charting, signals, and paper trading.'}</p>
+            <div className="mt-5 flex flex-wrap items-end gap-4">
               <div>
-                <div className="flex items-center gap-3">
-                  <h1 className="text-2xl font-mono font-bold text-zinc-100">{sym}</h1>
-                  {latestSignal?.signal && <SignalBadge signal={latestSignal.signal} />}
+                {loading && !priceData ? (
+                  <div className="skeleton h-10 w-36" />
+                ) : (
+                  <div className="text-4xl font-light font-mono text-zinc-100">{price != null ? `$${Number(price).toFixed(2)}` : '-'}</div>
+                )}
+                <div className={`mt-1 text-sm font-mono ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {change != null ? `${positive ? '+' : ''}${Number(change).toFixed(2)} (${positive ? '+' : ''}${((changePct || 0) * 100).toFixed(2)}%)` : 'Waiting for quote'}
                 </div>
-                {info?.name && <p className="text-sm text-zinc-500 mt-0.5">{info.name}</p>}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {summaryStats.map((stat) => (
+                  <div key={stat.label} className="rounded-2xl border border-zinc-800/80 bg-zinc-950/45 px-4 py-3">
+                    <div className="section-kicker mb-1">{stat.label}</div>
+                    <div className="font-mono text-zinc-100">{stat.value}</div>
+                  </div>
+                ))}
               </div>
             </div>
-            <div className="text-right">
-              {priceLoading ? (
-                <div className="h-9 w-28 skeleton" />
-              ) : price ? (
-                <>
-                  <div className="text-3xl font-light font-mono text-zinc-100">${price.toFixed(2)}</div>
-                  <div className={`text-sm font-mono ${isPos ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {isPos ? '+' : ''}{change?.toFixed(2)} ({isPos ? '+' : ''}{((changePct ?? 0) * 100).toFixed(2)}%)
-                  </div>
-                </>
-              ) : <div className="text-zinc-600 text-sm font-mono">No price data</div>}
+          </div>
+
+          <div className="rounded-[26px] border border-zinc-800/80 bg-zinc-950/45 p-5">
+            <div className="panel-title">
+              <span>Signal snapshot</span>
+              <span className={`text-[10px] font-mono ${status === WS_STATUS.CONNECTED ? 'text-emerald-400' : 'text-zinc-600'}`}>
+                {status === WS_STATUS.CONNECTED ? 'live stream' : 'reconnecting'}
+              </span>
+            </div>
+            <div className="space-y-3">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/55 px-4 py-4">
+                <div className="section-kicker mb-2">Latest agent action</div>
+                <div className="flex items-center gap-2">
+                  {latestSignal?.signal ? <SignalBadge signal={latestSignal.signal} /> : <span className="text-sm text-zinc-500">No active signal</span>}
+                </div>
+                <div className="mt-3 text-sm text-zinc-400">{latestSignal?.explanation || 'The signal engine will explain the latest setup here when a new event arrives.'}</div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Link to="/dashboard" className="btn-primary text-center">Open dashboard</Link>
+                <Link to="/agents" className="btn-ghost text-center">Review agents</Link>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Main layout */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+      <div className="grid gap-5 2xl:grid-cols-[1.45fr_0.55fr]">
+        <section className="space-y-5">
+          <section className="panel p-5">
+            <div className="panel-title">
+              <span>Price Chart</span>
+              <span className="text-[10px] font-mono text-zinc-600">1D · 1W · 1M · 3M · 1Y</span>
+            </div>
+            <CandlestickChart symbol={activeSymbol} height={400} />
+          </section>
 
-          {/* Left: Chart + Signals */}
-          <div className="xl:col-span-3 space-y-6">
-            {/* Chart */}
+          <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
             <div className="panel p-5">
-              <div className="panel-title">
-                <span>Price Chart · {sym}</span>
-                <span className={`flex items-center gap-1.5 text-[10px] ${status === WS_STATUS.CONNECTED ? 'text-emerald-400' : 'text-zinc-600'}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${status === WS_STATUS.CONNECTED ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
-                  {status === WS_STATUS.CONNECTED ? 'Live' : 'Stream'}
-                </span>
+              <div className="panel-title"><span>Company and Market Stats</span></div>
+              <div className="grid gap-x-8 md:grid-cols-2">
+                <div>
+                  <StatRow label="Sector" value={info?.sector} />
+                  <StatRow label="Industry" value={info?.industry} />
+                  <StatRow label="Market cap" value={info?.market_cap ? `$${(Number(info.market_cap) / 1e9).toFixed(1)}B` : '-'} />
+                  <StatRow label="P/E ratio" value={info?.pe_ratio != null ? Number(info.pe_ratio).toFixed(2) : '-'} />
+                </div>
+                <div>
+                  <StatRow label="EPS" value={info?.eps != null ? Number(info.eps).toFixed(2) : '-'} />
+                  <StatRow label="52 week high" value={info?.['52w_high'] != null ? `$${Number(info['52w_high']).toFixed(2)}` : '-'} />
+                  <StatRow label="52 week low" value={info?.['52w_low'] != null ? `$${Number(info['52w_low']).toFixed(2)}` : '-'} />
+                  <StatRow label="Average volume" value={info?.avg_volume ? `${(Number(info.avg_volume) / 1e6).toFixed(1)}M` : '-'} />
+                </div>
               </div>
-              <CandlestickChart symbol={sym} height={360} />
+              <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/35 px-4 py-4 text-sm leading-7 text-zinc-500">
+                {info?.description || 'Description and richer fundamentals will appear here as more metadata becomes available.'}
+              </div>
             </div>
 
-            {/* Live signals stream */}
             <div className="panel p-5">
-              <div className="panel-title">
-                <span>Live Signal Stream</span>
-                <span className="text-zinc-600">{messages.length} signals</span>
-              </div>
-              {messages.length === 0 ? (
-                <div className="text-center py-10 text-zinc-600 font-mono text-sm">
-                  {status === WS_STATUS.CONNECTING ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 border-2 border-zinc-700 border-t-cyan-500 rounded-full animate-spin" />
-                      Connecting to signal stream…
+              <div className="panel-title"><span>Live Signal Feed</span></div>
+              <div className="space-y-3 max-h-[24rem] overflow-y-auto">
+                {messages.length ? (
+                  messages.map((message, index) => (
+                    <div key={`${message._ts}-${index}`} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-mono text-zinc-600">
+                          {new Date(message._ts).toLocaleTimeString('en-US', { hour12: false })}
+                        </span>
+                        {message.signal ? <SignalBadge signal={message.signal} /> : null}
+                        {message.confidence != null ? <span className="ml-auto text-[11px] font-mono text-zinc-500">{(message.confidence * 100).toFixed(0)}%</span> : null}
+                      </div>
+                      <div className="mt-3 text-sm text-zinc-400">{message.explanation || 'Agent update received for this symbol.'}</div>
                     </div>
-                  ) : 'Awaiting signals…'}
-                </div>
-              ) : (
-                <div className="space-y-1 max-h-52 overflow-y-auto">
-                  {messages.map((msg, i) => (
-                    <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-mono ${i === 0 ? 'bg-zinc-800/80' : 'hover:bg-zinc-800/30'}`}>
-                      <span className="text-zinc-600 tabular-nums">{new Date(msg._ts).toLocaleTimeString('en-US', { hour12: false })}</span>
-                      {msg.signal && <SignalBadge signal={msg.signal} />}
-                      {msg.price && <span className="text-zinc-300">${Number(msg.price).toFixed(2)}</span>}
-                      {msg.confidence != null && (
-                        <span className="text-zinc-500 ml-auto">{(msg.confidence * 100).toFixed(0)}% conf</span>
-                      )}
-                      {msg.explanation && (
-                        <span className="text-zinc-600 truncate max-w-xs">{msg.explanation}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Company info */}
-            {info && (
-              <div className="panel p-5">
-                <div className="panel-title"><span>Company Info</span></div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
-                  <div>
-                    <StatRow label="Sector" value={info.sector} />
-                    <StatRow label="Industry" value={info.industry} />
-                    <StatRow label="Market Cap" value={info.market_cap ? `$${(info.market_cap / 1e9).toFixed(1)}B` : null} />
-                    <StatRow label="P/E Ratio" value={info.pe_ratio?.toFixed(2)} />
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-8 text-center text-sm text-zinc-500">
+                    Waiting for live signals on {activeSymbol}.
                   </div>
-                  <div>
-                    <StatRow label="EPS" value={info.eps?.toFixed(2)} />
-                    <StatRow label="52W High" value={info['52w_high']?.toFixed(2)} />
-                    <StatRow label="52W Low" value={info['52w_low']?.toFixed(2)} />
-                    <StatRow label="Avg Volume" value={info.avg_volume ? `${(info.avg_volume / 1e6).toFixed(1)}M` : null} />
-                  </div>
-                </div>
-                {info.description && (
-                  <p className="text-xs text-zinc-500 mt-4 leading-relaxed border-t border-zinc-800 pt-4">{info.description}</p>
                 )}
               </div>
-            )}
-          </div>
-
-          {/* Right sidebar */}
-          <div className="space-y-5">
-            {/* OHLC quick stats */}
-            <div className="panel p-4">
-              <div className="panel-title"><span>Today</span></div>
-              <div className="space-y-0">
-                <StatRow label="Open" value={priceData?.open?.toFixed(2) ? `$${priceData.open.toFixed(2)}` : null} />
-                <StatRow label="High" value={priceData?.high?.toFixed(2) ? `$${priceData.high.toFixed(2)}` : null} />
-                <StatRow label="Low" value={priceData?.low?.toFixed(2) ? `$${priceData.low.toFixed(2)}` : null} />
-                <StatRow label="Prev Close" value={priceData?.prev_close?.toFixed(2) ? `$${priceData.prev_close.toFixed(2)}` : null} />
-                <StatRow label="Volume" value={priceData?.volume ? `${(priceData.volume / 1e6).toFixed(1)}M` : null} />
-              </div>
             </div>
+          </section>
+        </section>
 
-            {/* Agent recommendation */}
-            {latestSignal && (
-              <div className={`panel p-4 ${
-                latestSignal.signal === 'BUY' ? 'border-emerald-500/30' :
-                latestSignal.signal === 'SELL' ? 'border-red-500/30' : ''
-              }`}>
-                <div className="panel-title"><span>Agent Insight</span></div>
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <SignalBadge signal={latestSignal.signal} />
-                    {latestSignal.confidence != null && (
-                      <div className="text-xs font-mono text-zinc-500">
-                        {(latestSignal.confidence * 100).toFixed(0)}% confidence
-                      </div>
-                    )}
-                  </div>
-                  {latestSignal.explanation && (
-                    <p className="text-xs text-zinc-400 leading-relaxed">{latestSignal.explanation}</p>
-                  )}
+        <aside className="space-y-5">
+          <section className="panel p-5">
+            <div className="panel-title"><span>Demo Trade</span></div>
+            <DemoTradePanel symbol={activeSymbol} currentPrice={price} />
+          </section>
+
+          <section className="panel p-5">
+            <div className="panel-title"><span>Real Broker Redirect</span></div>
+            <BrokerRedirect />
+          </section>
+
+          <section className="panel p-5">
+            <div className="panel-title"><span>Technical View</span></div>
+            <div className="space-y-3">
+              {[
+                { label: 'Trend bias', value: positive ? 'Positive' : 'Negative', tone: positive ? 'text-emerald-400' : 'text-red-400' },
+                { label: 'Signal state', value: latestSignal?.signal || 'Waiting', tone: 'text-zinc-100' },
+                { label: 'Session range', value: priceData?.high != null && priceData?.low != null ? `$${Number(priceData.low).toFixed(2)} - $${Number(priceData.high).toFixed(2)}` : '-' },
+              ].map((row) => (
+                <div key={row.label} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
+                  <div className="section-kicker mb-2">{row.label}</div>
+                  <div className={`text-lg font-light ${row.tone || 'text-zinc-100'}`}>{row.value}</div>
                 </div>
-              </div>
-            )}
-
-            {/* Paper trade */}
-            <div className="panel p-4">
-              <div className="panel-title"><span>Paper Trade</span></div>
-              <DemoTradePanel symbol={sym} currentPrice={price} />
+              ))}
             </div>
+          </section>
 
-            {/* Broker redirect */}
-            <div className="panel p-4">
-              <div className="panel-title"><span>Live Trading</span></div>
-              <BrokerRedirect symbol={sym} />
+          <section className="panel p-5">
+            <div className="panel-title"><span>News Feed</span></div>
+            <div className="space-y-3">
+              {[
+                'Price action summary placeholder',
+                'Agent insight note placeholder',
+                'Macro context placeholder',
+              ].map((item) => (
+                <div key={item} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4 text-sm text-zinc-500">
+                  {item}
+                </div>
+              ))}
             </div>
-          </div>
-        </div>
+          </section>
+        </aside>
       </div>
     </div>
   );

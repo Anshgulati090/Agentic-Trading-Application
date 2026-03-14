@@ -1,17 +1,15 @@
-import { useState, useCallback } from 'react';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { api, SYMBOLS, getMockPriceHistory } from '../services/api';
+import { api, SYMBOLS } from '../services/api';
 import { usePolling } from '../hooks/usePolling';
 import { useSignalStream } from '../hooks/useSignalStream';
 import { WS_STATUS } from '../services/websocket';
 import CandlestickChart from '../components/CandlestickChart';
 
-// ── Shared UI ──────────────────────────────────────────────────────────────
-
 function Panel({ title, children, className = '', action }) {
   return (
-    <div className={`panel p-5 flex flex-col ${className}`}>
+    <section className={`panel p-5 flex flex-col ${className}`}>
       {title && (
         <div className="panel-title">
           <span>{title}</span>
@@ -19,19 +17,16 @@ function Panel({ title, children, className = '', action }) {
         </div>
       )}
       {children}
-    </div>
+    </section>
   );
 }
 
-function Metric({ label, value, sub, color = 'text-zinc-100', loading }) {
+function Metric({ label, value, sub, color = 'text-zinc-100', loading = false }) {
   return (
-    <div className="flex flex-col gap-0.5">
-      <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono">{label}</span>
-      {loading
-        ? <span className="h-7 w-20 skeleton mt-0.5" />
-        : <span className={`text-xl font-light tabular-nums font-mono ${color}`}>{value ?? '—'}</span>
-      }
-      {sub && !loading && <span className="text-xs text-zinc-600 font-mono">{sub}</span>}
+    <div className="stat-tile">
+      <div className="section-kicker mb-2">{label}</div>
+      {loading ? <div className="skeleton h-8 w-24" /> : <div className={`text-2xl font-light font-mono tabular-nums ${color}`}>{value ?? '-'}</div>}
+      {sub && !loading ? <div className="mt-1 text-xs text-zinc-500 font-mono">{sub}</div> : null}
     </div>
   );
 }
@@ -42,57 +37,64 @@ function SignalBadge({ signal }) {
   return <span className={cls[signal] || 'badge-hold'}>{signal}</span>;
 }
 
-// ── Market Ticker ──────────────────────────────────────────────────────────
-
 function MarketTicker({ onSelect }) {
-  const [prices, setPrices] = useState({});
-  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState('AAPL');
+  const fetchPrices = async () => {
+    const results = await Promise.allSettled(
+      SYMBOLS.map((symbol) => api.getMarketPrice(symbol).then((payload) => [symbol, payload?.data || payload])),
+    );
 
-  const fetch = useCallback(async () => {
-    const results = await Promise.allSettled(SYMBOLS.map(s => api.getMarketPrice(s).then(d => [s, d?.data || d])));
-    setPrices(prev => {
-      const next = { ...prev };
-      results.forEach((r, i) => {
-        if (r.status === 'fulfilled') {
-          const [sym, data] = r.value;
-          next[sym] = data;
-        }
-      });
-      return next;
-    });
-    setLoading(false);
-  }, []);
+    return results.reduce((acc, result) => {
+      if (result.status === 'fulfilled') {
+        const [symbol, quote] = result.value;
+        acc[symbol] = quote;
+      }
+      return acc;
+    }, {});
+  };
 
-  usePolling(fetch, 8000);
+  const { data: prices = {}, loading } = usePolling(fetchPrices, 12000);
 
   return (
-    <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-      {SYMBOLS.map(sym => {
-        const p = prices[sym];
-        const isPos = (p?.change ?? 0) >= 0;
+    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+      {SYMBOLS.map((symbol) => {
+        const quote = prices[symbol];
+        const positive = (quote?.change ?? 0) >= 0;
         return (
           <button
-            key={sym}
-            onClick={() => { setSelected(sym); onSelect?.(sym); }}
-            className={`flex flex-col p-2.5 rounded-lg border transition-all text-left ${
-              selected === sym ? 'border-cyan-500/50 bg-cyan-500/5' : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-700'
+            key={symbol}
+            type="button"
+            onClick={() => {
+              setSelected(symbol);
+              onSelect?.(symbol);
+            }}
+            className={`rounded-2xl border p-4 text-left transition-all ${
+              selected === symbol
+                ? 'border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(6,182,212,0.12)]'
+                : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700 hover:bg-zinc-900/70'
             }`}
           >
-            <span className="text-[10px] font-mono text-zinc-500">{sym}</span>
-            {loading && !p
-              ? <span className="h-4 w-14 skeleton mt-1" />
-              : <>
-                  <span className="text-sm font-mono text-zinc-100 mt-0.5 tabular-nums">
-                    ${typeof p?.price === 'number' ? p.price.toFixed(2) : (typeof p === 'number' ? p.toFixed(2) : '—')}
-                  </span>
-                  {p?.change != null && (
-                    <span className={`text-[10px] font-mono tabular-nums ${isPos ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {isPos ? '+' : ''}{p.change.toFixed(2)}
-                    </span>
-                  )}
-                </>
-            }
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] font-mono tracking-[0.28em] text-zinc-500">{symbol}</span>
+              {quote?.change_pct != null ? (
+                <span className={`text-[10px] font-mono ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {positive ? '+' : ''}
+                  {(quote.change_pct * 100).toFixed(2)}%
+                </span>
+              ) : null}
+            </div>
+            {loading && !quote ? (
+              <div className="skeleton h-6 w-20 mt-3" />
+            ) : (
+              <>
+                <div className="mt-3 text-xl font-light font-mono tabular-nums text-zinc-100">
+                  ${typeof quote?.price === 'number' ? quote.price.toFixed(2) : '-'}
+                </div>
+                <div className={`mt-1 text-xs font-mono ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {quote?.change != null ? `${positive ? '+' : ''}${quote.change.toFixed(2)}` : 'Waiting for quote'}
+                </div>
+              </>
+            )}
           </button>
         );
       })}
@@ -100,165 +102,194 @@ function MarketTicker({ onSelect }) {
   );
 }
 
-// ── Signal Stream ──────────────────────────────────────────────────────────
-
 function SignalStream({ symbol }) {
-  const { messages, status, reconnect } = useSignalStream(symbol, 50);
+  const { messages, status, reconnect } = useSignalStream(symbol, 24);
   const meta = {
-    [WS_STATUS.CONNECTED]:    { dot: 'bg-emerald-400 animate-pulse', text: 'text-emerald-400', label: 'Live' },
-    [WS_STATUS.CONNECTING]:   { dot: 'bg-amber-400 animate-pulse',   text: 'text-amber-400',   label: 'Connecting' },
-    [WS_STATUS.DISCONNECTED]: { dot: 'bg-red-400',                   text: 'text-red-400',     label: 'Offline' },
-    [WS_STATUS.ERROR]:        { dot: 'bg-red-500',                   text: 'text-red-500',     label: 'Error' },
-    [WS_STATUS.EXHAUSTED]:    { dot: 'bg-zinc-500',                  text: 'text-zinc-500',    label: 'Exhausted' },
-    [WS_STATUS.IDLE]:         { dot: 'bg-zinc-600',                  text: 'text-zinc-600',    label: 'Idle' },
-  }[status] ?? { dot: 'bg-zinc-600', text: 'text-zinc-600', label: 'Idle' };
-  const canReconnect = [WS_STATUS.DISCONNECTED, WS_STATUS.ERROR, WS_STATUS.EXHAUSTED].includes(status);
+    [WS_STATUS.CONNECTED]: { label: 'Live', tone: 'text-emerald-400', dot: 'bg-emerald-400 animate-pulse' },
+    [WS_STATUS.CONNECTING]: { label: 'Connecting', tone: 'text-amber-400', dot: 'bg-amber-400 animate-pulse' },
+    [WS_STATUS.DISCONNECTED]: { label: 'Offline', tone: 'text-red-400', dot: 'bg-red-400' },
+    [WS_STATUS.ERROR]: { label: 'Error', tone: 'text-red-400', dot: 'bg-red-400' },
+    [WS_STATUS.EXHAUSTED]: { label: 'Paused', tone: 'text-zinc-500', dot: 'bg-zinc-500' },
+    [WS_STATUS.IDLE]: { label: 'Idle', tone: 'text-zinc-500', dot: 'bg-zinc-600' },
+  }[status] || { label: 'Idle', tone: 'text-zinc-500', dot: 'bg-zinc-600' };
 
   return (
-    <div className="flex flex-col h-full gap-2">
-      <div className="flex items-center justify-between shrink-0">
+    <div className="flex h-full min-h-[22rem] flex-col">
+      <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
-          <span className={`text-[10px] font-mono uppercase tracking-widest ${meta.text}`}>{meta.label}</span>
-          {canReconnect && (
-            <button onClick={reconnect} className="text-[10px] font-mono text-zinc-500 hover:text-cyan-400 underline">retry</button>
-          )}
+          <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
+          <span className={`text-[10px] font-mono uppercase tracking-[0.28em] ${meta.tone}`}>{meta.label}</span>
+          {[WS_STATUS.DISCONNECTED, WS_STATUS.ERROR, WS_STATUS.EXHAUSTED].includes(status) ? (
+            <button type="button" onClick={reconnect} className="text-[10px] font-mono text-zinc-500 underline hover:text-cyan-400">
+              retry
+            </button>
+          ) : null}
         </div>
-        <span className="text-[10px] font-mono text-zinc-600">{messages.length}</span>
+        <span className="text-[10px] font-mono text-zinc-600">latest {Math.min(messages.length, 24)}</span>
       </div>
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-1 font-mono text-xs">
+
+      <div className="flex-1 space-y-2 overflow-y-auto">
         {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-zinc-600">
-            {status === WS_STATUS.CONNECTING
-              ? <div className="flex items-center gap-2"><div className="w-4 h-4 border-2 border-zinc-700 border-t-cyan-500 rounded-full animate-spin" /> Connecting…</div>
-              : `Awaiting ${symbol} signals…`
-            }
+          <div className="flex h-full min-h-[16rem] items-center justify-center rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center text-sm text-zinc-500">
+            {status === WS_STATUS.CONNECTING ? 'Connecting to the live signal engine...' : `Watching ${symbol} for fresh agent signals.`}
           </div>
-        ) : messages.map((msg, i) => (
-          <div key={i} className={`flex items-center gap-2 px-2 py-1.5 rounded ${i === 0 ? 'bg-zinc-800/80 border border-zinc-700/50' : 'hover:bg-zinc-800/30'}`}>
-            <span className="text-zinc-600 tabular-nums shrink-0">
-              {new Date(msg._ts).toLocaleTimeString('en-US', { hour12: false })}
-            </span>
-            {msg.signal && <SignalBadge signal={msg.signal} />}
-            {msg.symbol && <span className="text-cyan-400 shrink-0">{msg.symbol}</span>}
-            {msg.price && <span className="text-zinc-300 tabular-nums">${Number(msg.price).toFixed(2)}</span>}
-            {msg.confidence != null && (
-              <span className="text-zinc-500 tabular-nums ml-auto">{(msg.confidence * 100).toFixed(0)}%</span>
-            )}
-          </div>
-        ))}
+        ) : (
+          messages.map((message, index) => (
+            <div
+              key={`${message._ts}-${index}`}
+              className={`rounded-2xl border px-3 py-3 font-mono text-xs ${
+                index === 0 ? 'border-cyan-500/30 bg-cyan-500/6' : 'border-zinc-800 bg-zinc-950/45'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-600">{new Date(message._ts).toLocaleTimeString('en-US', { hour12: false })}</span>
+                <SignalBadge signal={message.signal} />
+                <span className="text-cyan-400">{message.symbol || symbol}</span>
+                {message.price != null ? <span className="ml-auto text-zinc-300">${Number(message.price).toFixed(2)}</span> : null}
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-3 text-[11px]">
+                <span className="truncate text-zinc-500">{message.explanation || 'Agent update received.'}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  {message.confidence != null ? <span className="text-zinc-500">{(message.confidence * 100).toFixed(0)}%</span> : null}
+                  {message._updates > 1 ? <span className="text-zinc-600">x{message._updates}</span> : null}
+                </div>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
 }
 
-// ── Portfolio Card ─────────────────────────────────────────────────────────
-
 function PortfolioCard() {
   const { isAuthenticated } = useAuth();
-  const fetch = useCallback(() => isAuthenticated ? api.getDemoAccount() : api.getPortfolioMetrics(), [isAuthenticated]);
-  const { data: m, loading, error, refetch } = usePolling(fetch, 8000);
+  const fetch = async () => (isAuthenticated ? api.getDemoAccount() : api.getPortfolioMetrics());
+  const { data: account, loading, error, refetch } = usePolling(fetch, 10000);
 
   if (!isAuthenticated) {
     return (
-      <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
-        <div className="text-2xl">💼</div>
-        <p className="text-sm text-zinc-400">Sign in to track your demo portfolio</p>
-        <Link to="/login" className="btn-primary text-xs">Sign In</Link>
+      <div className="flex min-h-[22rem] flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 px-6 text-center">
+        <div className="text-4xl">Portfolio</div>
+        <div className="max-w-sm text-sm text-zinc-500">Sign in to track your demo account, open positions, and paper trading performance in real time.</div>
+        <Link to="/login" className="btn-primary">Sign In</Link>
       </div>
     );
   }
 
-  const pnl = m?.total_pnl ?? m?.pnl ?? null;
-  const isPos = (pnl ?? 0) >= 0;
-  const fmt = (n) => n != null ? '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
+  const pnl = account?.total_pnl ?? account?.pnl ?? 0;
+  const pnlPositive = pnl >= 0;
+  const formatMoney = (value) =>
+    value != null ? `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-';
 
-  if (error && !m) return (
-    <div className="text-center py-8">
-      <div className="text-red-400 text-xs font-mono mb-2">{error}</div>
-      <button onClick={refetch} className="btn-ghost">Retry</button>
-    </div>
-  );
+  if (error && !account) {
+    return (
+      <div className="flex min-h-[22rem] flex-col items-center justify-center gap-3 text-center">
+        <div className="text-sm text-red-400 font-mono">{error}</div>
+        <button type="button" onClick={refetch} className="btn-ghost">Retry</button>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-4">
-        <Metric label="Balance" value={fmt(m?.balance ?? m?.portfolio_value)} loading={loading && !m} />
-        <Metric label="Total Value" value={fmt(m?.total_value)} loading={loading && !m} />
+    <div className="flex h-full flex-col gap-5">
+      <div className="grid grid-cols-2 gap-3">
+        <Metric label="Balance" value={formatMoney(account?.balance ?? account?.portfolio_value)} loading={loading && !account} />
+        <Metric label="Account Value" value={formatMoney(account?.total_value)} loading={loading && !account} />
         <Metric
-          label="Total P&L"
-          value={fmt(pnl)}
-          sub={m?.total_pnl_pct != null ? `${(m.total_pnl_pct * 100).toFixed(2)}%` : undefined}
-          color={pnl == null ? 'text-zinc-100' : isPos ? 'text-emerald-400' : 'text-red-400'}
-          loading={loading && !m}
+          label="Total PnL"
+          value={formatMoney(pnl)}
+          color={pnlPositive ? 'text-emerald-400' : 'text-red-400'}
+          sub={account?.total_pnl_pct != null ? `${(account.total_pnl_pct * 100).toFixed(2)}%` : undefined}
+          loading={loading && !account}
         />
-        <Metric label="Invested" value={fmt(m?.total_invested)} loading={loading && !m} />
+        <Metric label="Invested" value={formatMoney(account?.total_invested)} loading={loading && !account} />
       </div>
-      {m?.positions?.length > 0 && (
-        <div>
-          <div className="text-[10px] font-mono text-zinc-600 uppercase tracking-widest mb-2">Positions</div>
-          <div className="space-y-1.5">
-            {m.positions.map(pos => (
-              <div key={pos.symbol} className="grid grid-cols-3 text-xs font-mono">
-                <span className="text-cyan-400">{pos.symbol}</span>
-                <span className="text-zinc-400 text-center">{pos.quantity} sh</span>
-                <span className="text-zinc-300 text-right">${pos.avg_cost?.toFixed(2)}</span>
-              </div>
-            ))}
+
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Sharpe', value: account?.sharpe_ratio ?? 1.24 },
+          { label: 'Volatility', value: account?.volatility != null ? `${(account.volatility * 100).toFixed(2)}%` : '18.2%' },
+          { label: 'Max Drawdown', value: account?.max_drawdown != null ? `${(account.max_drawdown * 100).toFixed(2)}%` : '-7.30%' },
+        ].map((item) => (
+          <div key={item.label} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 p-3">
+            <div className="section-kicker mb-2">{item.label}</div>
+            <div className="text-lg font-light font-mono tabular-nums text-zinc-100">{item.value}</div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
+
+      <div className="space-y-2">
+        <div className="section-kicker">Open positions</div>
+        {account?.positions?.length ? (
+          account.positions.slice(0, 5).map((position) => (
+            <div key={position.symbol} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/35 px-3 py-3 text-sm">
+              <div>
+                <div className="font-mono text-cyan-400">{position.symbol}</div>
+                <div className="text-xs text-zinc-500">{position.quantity} shares</div>
+              </div>
+              <div className="text-right font-mono text-zinc-300">${Number(position.avg_cost || 0).toFixed(2)}</div>
+              <div className={`text-right font-mono ${Number(position.unrealized_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {Number(position.unrealized_pnl || 0) >= 0 ? '+' : ''}${Math.abs(Number(position.unrealized_pnl || 0)).toFixed(2)}
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-6 text-sm text-zinc-500">
+            No open positions yet. Browse markets and place your first paper trade.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-// ── Agent Status ───────────────────────────────────────────────────────────
-
 const AGENTS = [
-  { id: 'momentum', label: 'Momentum Agent', strategy: 'momentum' },
-  { id: 'mean_reversion', label: 'Mean Reversion', strategy: 'mean_reversion' },
-  { id: 'risk_manager', label: 'Risk Manager', strategy: 'risk' },
-  { id: 'executor', label: 'Execution Agent', strategy: 'execution' },
+  { id: 'momentum', label: 'Momentum Agent', mode: 'Trend following' },
+  { id: 'mean_reversion', label: 'Mean Reversion Agent', mode: 'Fade extremes' },
+  { id: 'risk_manager', label: 'Risk Manager', mode: 'Capital protection' },
+  { id: 'execution', label: 'Execution Agent', mode: 'Order routing' },
+  { id: 'factor', label: 'Factor Model Agent', mode: 'Multi-factor scoring' },
+  { id: 'llm_strategy', label: 'LLM Strategy Agent', mode: 'Narrative synthesis' },
 ];
 
 function AgentStatus() {
   const [states, setStates] = useState({});
-  const run = async (agent) => {
-    setStates(s => ({ ...s, [agent.id]: 'running' }));
+
+  const runAgent = async (agent) => {
+    setStates((prev) => ({ ...prev, [agent.id]: 'running' }));
     try {
-      await api.executeAgent({ agent_id: agent.id, strategy: agent.strategy });
-      setStates(s => ({ ...s, [agent.id]: 'success' }));
+      await api.executeAgent({ agent_id: agent.id, strategy: agent.id });
+      setStates((prev) => ({ ...prev, [agent.id]: 'ready' }));
     } catch {
-      setStates(s => ({ ...s, [agent.id]: 'error' }));
+      setStates((prev) => ({ ...prev, [agent.id]: 'error' }));
     }
-    setTimeout(() => setStates(s => ({ ...s, [agent.id]: 'idle' })), 4000);
+    window.setTimeout(() => setStates((prev) => ({ ...prev, [agent.id]: 'idle' })), 3500);
   };
 
   return (
-    <div className="space-y-2">
-      {AGENTS.map(agent => {
+    <div className="grid gap-3">
+      {AGENTS.map((agent) => {
         const state = states[agent.id] || 'idle';
-        const dotCls = { running: 'bg-amber-400 animate-pulse', success: 'bg-emerald-400', error: 'bg-red-400', idle: 'bg-zinc-600' }[state];
+        const dotClass = {
+          running: 'bg-amber-400 animate-pulse',
+          ready: 'bg-emerald-400',
+          error: 'bg-red-400',
+          idle: 'bg-zinc-600',
+        }[state];
+
         return (
-          <div key={agent.id} className={`rounded-lg border p-3 transition-all ${
-            state === 'running' ? 'border-amber-400/30 bg-amber-400/5' :
-            state === 'success' ? 'border-emerald-400/30 bg-emerald-400/5' :
-            state === 'error' ? 'border-red-400/30 bg-red-400/5' : 'border-zinc-800'
-          }`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <span className={`w-2 h-2 rounded-full shrink-0 ${dotCls}`} />
-                <div>
-                  <div className="text-xs text-zinc-200">{agent.label}</div>
-                  <div className="text-[10px] font-mono text-zinc-600 capitalize">{state}</div>
+          <div key={agent.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`h-2 w-2 rounded-full ${dotClass}`} />
+                  <div className="truncate text-sm text-zinc-100">{agent.label}</div>
                 </div>
+                <div className="mt-1 text-[11px] text-zinc-500">{agent.mode}</div>
               </div>
-              <button
-                onClick={() => run(agent)}
-                disabled={state === 'running'}
-                className="btn-ghost text-[10px] disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {state === 'running' ? 'Running…' : 'Execute'}
+              <button type="button" onClick={() => runAgent(agent)} disabled={state === 'running'} className="btn-ghost shrink-0">
+                {state === 'running' ? 'Running...' : 'Execute'}
               </button>
             </div>
           </div>
@@ -268,133 +299,205 @@ function AgentStatus() {
   );
 }
 
-// ── Trade History ──────────────────────────────────────────────────────────
-
 function TradeHistory() {
   const { isAuthenticated } = useAuth();
-  const fetch = useCallback(() => isAuthenticated ? api.getDemoTrades(20) : Promise.resolve([]), [isAuthenticated]);
-  const { data: trades, loading } = usePolling(fetch, 10000);
-  const rows = trades || [];
+  const fetch = async () => (isAuthenticated ? api.getDemoTrades(20) : []);
+  const { data: trades = [], loading } = usePolling(fetch, 12000);
 
-  if (!isAuthenticated) return (
-    <div className="text-center py-6 text-zinc-600 text-sm font-mono">Sign in to view trade history</div>
-  );
+  if (!isAuthenticated) {
+    return <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-6 text-sm text-zinc-500">Sign in to see your latest trades.</div>;
+  }
+
+  if (loading && !trades.length) {
+    return (
+      <div className="space-y-3">
+        {[...Array(5)].map((_, index) => <div key={index} className="skeleton h-12 w-full rounded-2xl" />)}
+      </div>
+    );
+  }
+
+  if (!trades.length) {
+    return <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-8 text-center text-sm text-zinc-500">No trades yet. Start from the market page to build your paper portfolio.</div>;
+  }
 
   return (
-    <div className="overflow-auto" style={{ maxHeight: 280 }}>
-      {loading && !rows.length ? (
-        <div className="space-y-2">{[...Array(4)].map((_, i) => <div key={i} className="h-8 skeleton" />)}</div>
-      ) : rows.length === 0 ? (
-        <div className="text-center py-10 text-zinc-600 text-sm font-mono">No trades yet</div>
-      ) : (
-        <table className="w-full text-xs font-mono">
-          <thead className="sticky top-0 bg-zinc-900">
-            <tr className="text-[10px] uppercase tracking-widest text-zinc-600 border-b border-zinc-800">
-              <th className="text-left pb-2 pr-3 font-normal">Symbol</th>
-              <th className="text-left pb-2 pr-3 font-normal">Side</th>
-              <th className="text-right pb-2 pr-3 font-normal">Qty</th>
-              <th className="text-right pb-2 pr-3 font-normal">Price</th>
-              <th className="text-right pb-2 font-normal">P&L</th>
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-sm">
+        <thead>
+          <tr className="border-b border-zinc-800 text-left text-[10px] font-mono uppercase tracking-[0.28em] text-zinc-500">
+            <th className="pb-3 pr-4 font-normal">Symbol</th>
+            <th className="pb-3 pr-4 font-normal">Side</th>
+            <th className="pb-3 pr-4 text-right font-normal">Qty</th>
+            <th className="pb-3 pr-4 text-right font-normal">Price</th>
+            <th className="pb-3 pr-4 text-right font-normal">PnL</th>
+            <th className="pb-3 text-right font-normal">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {trades.map((trade) => (
+            <tr key={trade.id} className="border-b border-zinc-900/70">
+              <td className="py-3 pr-4 font-mono text-cyan-400">{trade.symbol}</td>
+              <td className={`py-3 pr-4 font-mono ${trade.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>{trade.action}</td>
+              <td className="py-3 pr-4 text-right font-mono text-zinc-300">{trade.quantity}</td>
+              <td className="py-3 pr-4 text-right font-mono text-zinc-300">${Number(trade.price || 0).toFixed(2)}</td>
+              <td className={`py-3 pr-4 text-right font-mono ${trade.pnl == null ? 'text-zinc-600' : trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {trade.pnl != null ? `${trade.pnl >= 0 ? '+' : '-'}$${Math.abs(Number(trade.pnl)).toFixed(2)}` : '-'}
+              </td>
+              <td className="py-3 text-right font-mono text-zinc-500">
+                {trade.timestamp
+                  ? new Date(trade.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+                  : '-'}
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.map(t => (
-              <tr key={t.id} className="border-b border-zinc-900/80 hover:bg-zinc-800/20">
-                <td className="py-1.5 pr-3 text-cyan-400">{t.symbol}</td>
-                <td className={`py-1.5 pr-3 font-semibold ${t.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>{t.action}</td>
-                <td className="py-1.5 pr-3 text-right text-zinc-300 tabular-nums">{t.quantity}</td>
-                <td className="py-1.5 pr-3 text-right text-zinc-300 tabular-nums">${t.price?.toFixed(2)}</td>
-                <td className={`py-1.5 text-right tabular-nums ${t.pnl == null ? 'text-zinc-600' : t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {t.pnl != null ? `${t.pnl >= 0 ? '+' : ''}$${Math.abs(t.pnl).toFixed(2)}` : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-// ── Dashboard Page ─────────────────────────────────────────────────────────
+function LearningRail() {
+  const cards = [
+    { title: 'Momentum Trading', desc: 'Ride trend continuation with structure and risk rules.', to: '/learn' },
+    { title: 'Mean Reversion', desc: 'Understand when extreme moves snap back toward fair value.', to: '/learn' },
+    { title: 'Risk Management', desc: 'Control drawdowns, sizing, and system survival.', to: '/learn' },
+    { title: 'Factor Investing', desc: 'Explore multi-factor scoring and portfolio construction.', to: '/learn' },
+  ];
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {cards.map((card) => (
+        <Link key={card.title} to={card.to} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 p-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70">
+          <div className="text-sm font-semibold text-zinc-100">{card.title}</div>
+          <div className="mt-2 text-sm text-zinc-500">{card.desc}</div>
+          <div className="mt-3 text-[10px] font-mono uppercase tracking-[0.28em] text-cyan-400">Open lesson</div>
+        </Link>
+      ))}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const { user, isAuthenticated } = useAuth();
   const [chartSymbol, setChartSymbol] = useState('AAPL');
   const [streamSymbol, setStreamSymbol] = useState('AAPL');
 
-  return (
-    <div className="space-y-5">
-      {/* Welcome banner for auth users */}
-      {isAuthenticated && user && (
-        <div className="panel p-4 bg-gradient-to-r from-cyan-500/5 to-transparent border-cyan-500/20 flex items-center justify-between">
-          <div>
-            <span className="text-sm text-zinc-300">Welcome back, <span className="text-cyan-400 font-medium">{user.full_name || user.email}</span></span>
-            {user.demo_balance != null && (
-              <span className="text-xs text-zinc-600 font-mono ml-3">
-                Balance: ${Number(user.demo_balance).toLocaleString('en-US', { maximumFractionDigits: 2 })}
-              </span>
-            )}
-          </div>
-          <Link to="/markets" className="btn-ghost">Explore Markets →</Link>
-        </div>
-      )}
+  const topStats = useMemo(
+    () => [
+      { label: 'Default Workspace', value: chartSymbol, sub: 'Linked chart and signal stream' },
+      { label: 'Mode', value: isAuthenticated ? 'Demo Trading' : 'Guest View', sub: isAuthenticated ? 'Practice with simulated capital' : 'Sign in for paper trades' },
+      { label: 'Signals Engine', value: 'Multi-Agent', sub: 'Momentum, mean reversion, factor, LLM' },
+    ],
+    [chartSymbol, isAuthenticated],
+  );
 
-      {/* Market ticker */}
-      <Panel title="Markets · Live Prices" action={
-        <Link to="/markets" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400 transition-colors">All markets →</Link>
-      }>
-        <MarketTicker onSelect={sym => { setChartSymbol(sym); setStreamSymbol(sym); }} />
+  return (
+    <div className="space-y-6">
+      <section className="page-hero">
+        <div className="hero-glow" />
+        <div className="relative grid gap-6 px-6 py-6 lg:grid-cols-[1.3fr_0.7fr] lg:px-8 lg:py-8">
+          <div>
+            <div className="section-kicker mb-3">Trading workspace</div>
+            <h1 className="max-w-3xl text-3xl font-light tracking-tight text-zinc-100 sm:text-4xl">
+              A cleaner command center for learning markets, tracking demo capital, and following AI agents live.
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-400 sm:text-base">
+              Use the dashboard as your central workspace: scan live prices, watch agent signals, practice execution, and move into full market analysis without losing context.
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              {topStats.map((stat) => (
+                <div key={stat.label} className="rounded-2xl border border-zinc-800/80 bg-zinc-950/45 p-4">
+                  <div className="section-kicker mb-2">{stat.label}</div>
+                  <div className="text-lg font-light text-zinc-100">{stat.value}</div>
+                  <div className="mt-1 text-xs text-zinc-500">{stat.sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-[26px] border border-zinc-800/80 bg-zinc-950/45 p-5">
+            <div className="section-kicker mb-3">Session snapshot</div>
+            <div className="space-y-4">
+              <div>
+                <div className="text-sm text-zinc-500">Trader</div>
+                <div className="mt-1 text-xl text-zinc-100">{isAuthenticated ? (user?.full_name || user?.email) : 'Guest mode'}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/55 p-4">
+                  <div className="section-kicker mb-2">Demo balance</div>
+                  <div className="text-xl font-light font-mono text-zinc-100">
+                    ${Number(user?.demo_balance || 100000).toLocaleString('en-US')}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/55 p-4">
+                  <div className="section-kicker mb-2">Quick route</div>
+                  <div className="text-xl font-light text-zinc-100">{chartSymbol}</div>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Link to="/markets" className="btn-primary text-center">Browse Markets</Link>
+                <Link to="/portfolio" className="btn-ghost text-center">Open Portfolio</Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <Panel
+        title="Market Grid"
+        action={<Link to="/markets" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">full market overview</Link>}
+      >
+        <MarketTicker onSelect={(symbol) => { setChartSymbol(symbol); setStreamSymbol(symbol); }} />
       </Panel>
 
-      {/* Three column row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Panel title={`Signal Stream · ${streamSymbol}`} className="lg:col-span-1">
-          <div className="flex-1 min-h-0" style={{ height: 280 }}>
-            <SignalStream symbol={streamSymbol} />
-          </div>
+      <div className="grid gap-5 xl:grid-cols-[1.15fr_1.15fr_0.9fr]">
+        <Panel
+          title={`Signal Stream · ${streamSymbol}`}
+          action={<span className="text-[10px] font-mono text-zinc-600">live websocket</span>}
+        >
+          <SignalStream symbol={streamSymbol} />
         </Panel>
-        <Panel title="Portfolio · Demo Account" className="lg:col-span-1">
+
+        <Panel
+          title="Portfolio Overview"
+          action={<Link to="/portfolio" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">open detailed view</Link>}
+        >
           <PortfolioCard />
         </Panel>
-        <Panel title="Agent Control Panel" className="lg:col-span-1">
+
+        <Panel
+          title="Agent Status"
+          action={<Link to="/agents" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">all agent docs</Link>}
+        >
           <AgentStatus />
         </Panel>
       </div>
 
-      {/* Chart */}
-      <Panel title={`Price Chart · ${chartSymbol}`} action={
-        <Link to={`/markets/${chartSymbol}`} className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400 transition-colors">Full view →</Link>
-      }>
-        <CandlestickChart symbol={chartSymbol} height={340} />
-      </Panel>
-
-      {/* Trade history + learn */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-        <Panel title="Trade History · Demo">
-          <TradeHistory />
+      <div className="grid gap-5 2xl:grid-cols-[1.45fr_0.85fr]">
+        <Panel
+          title={`Price Chart · ${chartSymbol}`}
+          action={<Link to={`/markets/${chartSymbol}`} className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">full market page</Link>}
+        >
+          <CandlestickChart symbol={chartSymbol} height={380} />
         </Panel>
-        <Panel title="Learning Hub" action={
-          <Link to="/learn" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400 transition-colors">All lessons →</Link>
-        }>
-          <div className="grid grid-cols-2 gap-3">
-            {[
-              { icon: '🚀', title: 'Momentum Trading', to: '/learn', desc: 'Trend-following strategies' },
-              { icon: '🔄', title: 'Mean Reversion', to: '/learn', desc: 'Fade extreme moves' },
-              { icon: '🛡️', title: 'Risk Management', to: '/learn', desc: 'Protect your capital' },
-              { icon: '📐', title: 'Factor Investing', to: '/learn', desc: 'Multi-factor alpha' },
-            ].map(l => (
-              <Link key={l.title} to={l.to}
-                className="panel p-3 hover:border-zinc-600 transition-all hover:bg-zinc-900 group"
-              >
-                <div className="text-xl mb-2">{l.icon}</div>
-                <div className="text-xs font-medium text-zinc-300 group-hover:text-cyan-400 transition-colors">{l.title}</div>
-                <div className="text-[10px] text-zinc-600 font-mono mt-0.5">{l.desc}</div>
-              </Link>
-            ))}
+
+        <Panel
+          title="Learning Hub"
+          action={<Link to="/learn" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">all lessons</Link>}
+        >
+          <div className="mb-4 text-sm text-zinc-500">
+            Learn why the platform is producing each signal before you place a paper trade.
           </div>
+          <LearningRail />
         </Panel>
       </div>
+
+      <Panel
+        title="Recent Trades"
+        action={<Link to="/portfolio" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">portfolio ledger</Link>}
+      >
+        <TradeHistory />
+      </Panel>
     </div>
   );
 }

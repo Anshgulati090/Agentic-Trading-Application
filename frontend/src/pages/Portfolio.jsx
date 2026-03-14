@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { usePolling } from '../hooks/usePolling';
@@ -7,160 +7,224 @@ import CandlestickChart from '../components/CandlestickChart';
 
 function StatCard({ label, value, sub, color = 'text-zinc-100' }) {
   return (
-    <div className="panel p-4">
-      <div className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono mb-1">{label}</div>
-      <div className={`text-2xl font-light tabular-nums font-mono ${color}`}>{value ?? '—'}</div>
-      {sub && <div className="text-xs text-zinc-600 font-mono mt-0.5">{sub}</div>}
+    <div className="stat-tile">
+      <div className="section-kicker mb-2">{label}</div>
+      <div className={`text-2xl font-light font-mono tabular-nums ${color}`}>{value ?? '-'}</div>
+      {sub ? <div className="mt-1 text-xs text-zinc-500 font-mono">{sub}</div> : null}
     </div>
   );
 }
 
-const fmt = (n) => n != null ? '$' + Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—';
-const fmtPct = (n) => n != null ? (n >= 0 ? '+' : '') + (n * 100).toFixed(2) + '%' : '—';
+const formatMoney = (value) =>
+  value != null ? `$${Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '-';
+const formatPct = (value) => (value != null ? `${value >= 0 ? '+' : ''}${(value * 100).toFixed(2)}%` : '-');
 
 export default function Portfolio() {
   const { isAuthenticated } = useAuth();
-  const fetchAccount = useCallback(() => isAuthenticated ? api.getDemoAccount() : api.getPortfolioMetrics(), [isAuthenticated]);
-  const fetchTrades = useCallback(() => isAuthenticated ? api.getDemoTrades(50) : Promise.resolve([]), [isAuthenticated]);
-  const { data: acct, loading } = usePolling(fetchAccount, 8000);
-  const { data: trades } = usePolling(fetchTrades, 10000);
-
-  const pnl = acct?.total_pnl ?? acct?.pnl ?? null;
-  const isPos = (pnl ?? 0) >= 0;
-  const tradeRows = trades || [];
+  const navigate = useNavigate();
+  const fetchAccount = useCallback(() => (isAuthenticated ? api.getDemoAccount() : api.getPortfolioMetrics()), [isAuthenticated]);
+  const fetchTrades = useCallback(() => (isAuthenticated ? api.getDemoTrades(50) : Promise.resolve([])), [isAuthenticated]);
+  const { data: account, loading, refetch } = usePolling(fetchAccount, 12000);
+  const { data: trades = [] } = usePolling(fetchTrades, 15000);
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="text-4xl">💼</div>
-          <h2 className="text-xl font-light">Sign in to view your portfolio</h2>
-          <Link to="/login" className="btn-primary inline-block">Sign In</Link>
+      <div className="page-hero">
+        <div className="hero-glow" />
+        <div className="relative px-6 py-12 text-center">
+          <div className="section-kicker mb-3">Portfolio</div>
+          <h1 className="text-3xl font-light text-zinc-100">Sign in to unlock your paper trading ledger</h1>
+          <p className="mx-auto mt-4 max-w-2xl text-sm text-zinc-500">
+            Your portfolio page tracks balance, open positions, realized and unrealized PnL, and every simulated trade you have placed.
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <Link to="/login" className="btn-primary">Sign In</Link>
+            <Link to="/markets" className="btn-ghost">Browse Markets</Link>
+          </div>
         </div>
       </div>
     );
   }
 
-  return (
-    <div className="space-y-5">
-      <div className="panel p-5 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-light tracking-tight">Demo Portfolio</h2>
-          <p className="text-xs text-zinc-500 font-mono mt-0.5">Paper trading account — no real money</p>
-        </div>
-        <button
-          onClick={() => { if (confirm('Reset demo account to $100,000?')) api.resetDemoAccount().then(() => window.location.reload()); }}
-          className="btn-ghost text-xs text-red-400 border-red-800 hover:border-red-600 hover:text-red-300"
-        >
-          Reset Account
-        </button>
-      </div>
+  const pnl = account?.total_pnl ?? account?.pnl ?? 0;
+  const pnlPositive = pnl >= 0;
+  const positions = account?.positions || [];
 
-      {loading && !acct ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => <div key={i} className="panel p-4 h-20 skeleton" />)}
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <StatCard label="Cash Balance" value={fmt(acct?.balance)} />
-            <StatCard label="Total Value" value={fmt(acct?.total_value)} />
-            <StatCard
-              label="Total P&L"
-              value={fmt(pnl)}
-              sub={acct?.total_pnl_pct != null ? fmtPct(acct.total_pnl_pct) : undefined}
-              color={pnl == null ? 'text-zinc-100' : isPos ? 'text-emerald-400' : 'text-red-400'}
-            />
-            <StatCard label="Invested" value={fmt(acct?.total_invested)} />
+  return (
+    <div className="space-y-6">
+      <section className="page-hero">
+        <div className="hero-glow" />
+        <div className="relative grid gap-6 px-6 py-6 lg:grid-cols-[1.2fr_0.8fr] lg:px-8">
+          <div>
+            <div className="section-kicker mb-3">Portfolio</div>
+            <h1 className="text-3xl font-light tracking-tight text-zinc-100">A complete view of your simulated capital, holdings, and execution history.</h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-400">
+              This page is your training ledger. Review balance, concentration, open positions, and trade outcomes before you move to the next lesson or market idea.
+            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-4">
+              <StatCard label="Cash Balance" value={formatMoney(account?.balance)} />
+              <StatCard label="Total Value" value={formatMoney(account?.total_value)} />
+              <StatCard label="PnL" value={formatMoney(pnl)} color={pnlPositive ? 'text-emerald-400' : 'text-red-400'} sub={formatPct(account?.total_pnl_pct)} />
+              <StatCard label="Capital Invested" value={formatMoney(account?.total_invested)} />
+            </div>
           </div>
 
-          {/* Positions */}
-          {acct?.positions?.length > 0 && (
-            <div className="panel p-5">
-              <div className="panel-title"><span>Open Positions</span></div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs font-mono">
-                  <thead>
-                    <tr className="text-[10px] uppercase tracking-widest text-zinc-600 border-b border-zinc-800">
-                      <th className="text-left pb-2 pr-4 font-normal">Symbol</th>
-                      <th className="text-right pb-2 pr-4 font-normal">Quantity</th>
-                      <th className="text-right pb-2 pr-4 font-normal">Avg Cost</th>
-                      <th className="text-right pb-2 pr-4 font-normal">Market Value</th>
-                      <th className="text-right pb-2 font-normal">Unrealized P&L</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {acct.positions.map(pos => (
-                      <tr key={pos.symbol} className="border-b border-zinc-900 hover:bg-zinc-800/20 cursor-pointer"
-                        onClick={() => window.location.href = `/markets/${pos.symbol}`}>
-                        <td className="py-2.5 pr-4 text-cyan-400 hover:text-cyan-300">{pos.symbol}</td>
-                        <td className="py-2.5 pr-4 text-right text-zinc-300 tabular-nums">{pos.quantity}</td>
-                        <td className="py-2.5 pr-4 text-right text-zinc-400 tabular-nums">{fmt(pos.avg_cost)}</td>
-                        <td className="py-2.5 pr-4 text-right text-zinc-300 tabular-nums">{fmt(pos.market_value)}</td>
-                        <td className={`py-2.5 text-right tabular-nums ${pos.unrealized_pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                          {fmt(pos.unrealized_pnl)} ({fmtPct(pos.unrealized_pnl_pct)})
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          <div className="rounded-[26px] border border-zinc-800/80 bg-zinc-950/45 p-5">
+            <div className="panel-title"><span>Account Controls</span></div>
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/55 p-4">
+                <div className="section-kicker mb-2">Account mode</div>
+                <div className="text-lg text-zinc-100">Demo / Paper Trading</div>
+                <div className="mt-1 text-sm text-zinc-500">No real orders are sent to a broker from AgenticTrading.</div>
               </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Link to="/markets" className="btn-primary text-center">Open Markets</Link>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (window.confirm('Reset your demo account back to $100,000?')) {
+                      await api.resetDemoAccount();
+                      window.location.reload();
+                    }
+                  }}
+                  className="btn-ghost border-red-800 text-red-400 hover:border-red-600 hover:text-red-300"
+                >
+                  Reset account
+                </button>
+              </div>
+              <button type="button" onClick={refetch} className="btn-ghost w-full">Refresh portfolio</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {loading && !account ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[...Array(4)].map((_, index) => <div key={index} className="skeleton h-28 w-full rounded-2xl" />)}
+        </div>
+      ) : null}
+
+      <div className="grid gap-5 2xl:grid-cols-[1.3fr_0.7fr]">
+        <section className="panel p-5">
+          <div className="panel-title">
+            <span>Open Positions</span>
+            <span className="text-[10px] font-mono text-zinc-600">{positions.length} holdings</span>
+          </div>
+          {positions.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-800 text-left text-[10px] font-mono uppercase tracking-[0.28em] text-zinc-500">
+                    <th className="pb-3 pr-4 font-normal">Symbol</th>
+                    <th className="pb-3 pr-4 text-right font-normal">Quantity</th>
+                    <th className="pb-3 pr-4 text-right font-normal">Avg Cost</th>
+                    <th className="pb-3 pr-4 text-right font-normal">Market Value</th>
+                    <th className="pb-3 pr-4 text-right font-normal">Weight</th>
+                    <th className="pb-3 text-right font-normal">Unrealized PnL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {positions.map((position) => (
+                    <tr
+                      key={position.symbol}
+                      className="cursor-pointer border-b border-zinc-900/70 transition-colors hover:bg-zinc-800/20"
+                      onClick={() => navigate(`/markets/${position.symbol}`)}
+                    >
+                      <td className="py-3 pr-4 font-mono text-cyan-400">{position.symbol}</td>
+                      <td className="py-3 pr-4 text-right font-mono text-zinc-300">{position.quantity}</td>
+                      <td className="py-3 pr-4 text-right font-mono text-zinc-400">{formatMoney(position.avg_cost)}</td>
+                      <td className="py-3 pr-4 text-right font-mono text-zinc-300">{formatMoney(position.market_value)}</td>
+                      <td className="py-3 pr-4 text-right font-mono text-zinc-500">
+                        {account?.total_value ? `${((Number(position.market_value || 0) / Number(account.total_value || 1)) * 100).toFixed(1)}%` : '-'}
+                      </td>
+                      <td className={`py-3 text-right font-mono ${Number(position.unrealized_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {formatMoney(position.unrealized_pnl)} ({formatPct(position.unrealized_pnl_pct)})
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-8 text-center text-sm text-zinc-500">
+              You do not have open positions yet. Start with a liquid training market like AAPL, NVDA, or BTC.
             </div>
           )}
-        </>
-      )}
+        </section>
 
-      {/* Chart */}
-      <div className="panel p-5">
-        <div className="panel-title"><span>Portfolio Performance Chart</span></div>
-        <CandlestickChart symbol="SPY" height={280} />
+        <section className="panel p-5">
+          <div className="panel-title"><span>Portfolio Snapshot</span></div>
+          <div className="space-y-3">
+            {[
+              { label: 'Positions', value: positions.length },
+              { label: 'Winning trades', value: trades.filter((trade) => Number(trade.pnl || 0) > 0).length },
+              { label: 'Losing trades', value: trades.filter((trade) => Number(trade.pnl || 0) < 0).length },
+              { label: 'Last action', value: trades[0]?.action || '-' },
+            ].map((item) => (
+              <div key={item.label} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
+                <div className="section-kicker mb-2">{item.label}</div>
+                <div className="text-2xl font-light font-mono text-zinc-100">{item.value}</div>
+              </div>
+            ))}
+            <Link to="/learn" className="btn-ghost block text-center">Go back to learning hub</Link>
+          </div>
+        </section>
       </div>
 
-      {/* Trade history */}
-      <div className="panel p-5">
+      <section className="panel p-5">
+        <div className="panel-title">
+          <span>Benchmark Chart</span>
+          <span className="text-[10px] font-mono text-zinc-600">SPY reference for market context</span>
+        </div>
+        <CandlestickChart symbol="SPY" height={320} />
+      </section>
+
+      <section className="panel p-5">
         <div className="panel-title">
           <span>Trade History</span>
-          <span className="text-zinc-600">{tradeRows.length} trades</span>
+          <span className="text-[10px] font-mono text-zinc-600">{trades.length} fills</span>
         </div>
-        {tradeRows.length === 0 ? (
-          <div className="text-center py-10 text-zinc-600 font-mono text-sm">
-            No trades yet — <Link to="/markets" className="text-cyan-400 hover:text-cyan-300">browse markets</Link> to start
-          </div>
-        ) : (
+        {trades.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs font-mono">
-              <thead className="sticky top-0 bg-zinc-900">
-                <tr className="text-[10px] uppercase tracking-widest text-zinc-600 border-b border-zinc-800">
-                  <th className="text-left pb-2 pr-4 font-normal">Symbol</th>
-                  <th className="text-left pb-2 pr-4 font-normal">Side</th>
-                  <th className="text-right pb-2 pr-4 font-normal">Qty</th>
-                  <th className="text-right pb-2 pr-4 font-normal">Price</th>
-                  <th className="text-right pb-2 pr-4 font-normal">Total</th>
-                  <th className="text-right pb-2 pr-4 font-normal">P&L</th>
-                  <th className="text-right pb-2 font-normal">Time</th>
+            <table className="w-full min-w-[860px] text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 text-left text-[10px] font-mono uppercase tracking-[0.28em] text-zinc-500">
+                  <th className="pb-3 pr-4 font-normal">Symbol</th>
+                  <th className="pb-3 pr-4 font-normal">Side</th>
+                  <th className="pb-3 pr-4 text-right font-normal">Qty</th>
+                  <th className="pb-3 pr-4 text-right font-normal">Price</th>
+                  <th className="pb-3 pr-4 text-right font-normal">Total</th>
+                  <th className="pb-3 pr-4 text-right font-normal">PnL</th>
+                  <th className="pb-3 text-right font-normal">Timestamp</th>
                 </tr>
               </thead>
               <tbody>
-                {tradeRows.map(t => (
-                  <tr key={t.id} className="border-b border-zinc-900/80 hover:bg-zinc-800/20">
-                    <td className="py-2 pr-4 text-cyan-400">{t.symbol}</td>
-                    <td className={`py-2 pr-4 font-semibold ${t.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>{t.action}</td>
-                    <td className="py-2 pr-4 text-right text-zinc-300 tabular-nums">{t.quantity}</td>
-                    <td className="py-2 pr-4 text-right text-zinc-300 tabular-nums">${t.price?.toFixed(2)}</td>
-                    <td className="py-2 pr-4 text-right text-zinc-400 tabular-nums">${t.total_value?.toFixed(2)}</td>
-                    <td className={`py-2 pr-4 text-right tabular-nums ${t.pnl == null ? 'text-zinc-600' : t.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {t.pnl != null ? `${t.pnl >= 0 ? '+' : ''}$${Math.abs(t.pnl).toFixed(2)}` : '—'}
+                {trades.map((trade) => (
+                  <tr key={trade.id} className="border-b border-zinc-900/70">
+                    <td className="py-3 pr-4 font-mono text-cyan-400">{trade.symbol}</td>
+                    <td className={`py-3 pr-4 font-mono ${trade.action === 'BUY' ? 'text-emerald-400' : 'text-red-400'}`}>{trade.action}</td>
+                    <td className="py-3 pr-4 text-right font-mono text-zinc-300">{trade.quantity}</td>
+                    <td className="py-3 pr-4 text-right font-mono text-zinc-300">${Number(trade.price || 0).toFixed(2)}</td>
+                    <td className="py-3 pr-4 text-right font-mono text-zinc-400">{formatMoney(trade.total_value)}</td>
+                    <td className={`py-3 pr-4 text-right font-mono ${trade.pnl == null ? 'text-zinc-600' : trade.pnl >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {trade.pnl != null ? `${trade.pnl >= 0 ? '+' : '-'}$${Math.abs(Number(trade.pnl)).toFixed(2)}` : '-'}
                     </td>
-                    <td className="py-2 text-right text-zinc-600 tabular-nums">
-                      {new Date(t.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}
+                    <td className="py-3 text-right font-mono text-zinc-500">
+                      {trade.timestamp
+                        ? new Date(trade.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+                        : '-'}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-8 text-center text-sm text-zinc-500">
+            No trades yet. Visit the market detail page to preview and place a paper trade.
+          </div>
         )}
-      </div>
+      </section>
     </div>
   );
 }

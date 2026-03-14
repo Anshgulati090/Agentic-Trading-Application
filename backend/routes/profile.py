@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from backend.api.dependencies import get_current_user, get_db, get_market_data_provider
 from backend.db.models.user import User
 from backend.market.data_provider import MarketDataProvider
-from backend.security.auth import hash_password, verify_password
+from backend.auth.jwt_handler import hash_password, verify_password
 from backend.services.learning_service import LearningService
 
 

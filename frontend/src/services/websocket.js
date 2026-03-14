@@ -1,4 +1,24 @@
-const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8000';
+function resolveWsBase() {
+  const configured = import.meta.env.VITE_WS_URL;
+  if (configured) {
+    if (configured.startsWith('ws://') || configured.startsWith('wss://')) {
+      return configured.replace(/\/$/, '');
+    }
+    if (configured.startsWith('/')) {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${window.location.host}${configured}`.replace(/\/$/, '');
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws`;
+  }
+
+  return 'ws://127.0.0.1:8000/ws';
+}
+
+const WS_BASE = resolveWsBase();
 
 export const WS_STATUS = {
   IDLE: 'idle',
@@ -32,7 +52,7 @@ export class SignalWebSocket {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
     this._setStatus(WS_STATUS.CONNECTING);
     try {
-      this.ws = new WebSocket(`${WS_BASE}/ws/signals/${this.symbol}`);
+      this.ws = new WebSocket(`${WS_BASE}/signals/${this.symbol}`);
     } catch {
       this._setStatus(WS_STATUS.ERROR);
       this._scheduleReconnect();
@@ -45,7 +65,7 @@ export class SignalWebSocket {
     this.ws.onmessage = (e) => {
       try {
         const data = JSON.parse(e.data);
-        this.onMessage?.({ ...data, _receivedAt: Date.now() });
+        this.onMessage?.({ ...(data?.data || data), _receivedAt: Date.now() });
       } catch {
         this.onMessage?.({ raw: e.data, _receivedAt: Date.now() });
       }

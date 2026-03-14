@@ -7,6 +7,9 @@ export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from || '/dashboard';
+  const signupMessage = location.state?.message || '';
+  const verificationPreviewUrl = location.state?.verificationPreviewUrl || '';
+  const signupEmail = location.state?.email || '';
 
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
@@ -34,8 +37,7 @@ export default function Login() {
       await login('demo@agentictrading.com', 'demo123');
       navigate(from, { replace: true });
     } catch {
-      // Demo user might not exist yet
-      setError('Demo account not set up yet. Please register.');
+      setError('Demo account is temporarily unavailable. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -44,7 +46,6 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
             <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center">
@@ -56,13 +57,25 @@ export default function Login() {
           <p className="text-sm text-zinc-500 mt-1">Sign in to your trading account</p>
         </div>
 
+        {signupMessage && (
+          <div className="mb-4 bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-mono rounded-lg px-4 py-3">
+            <div>{signupMessage}</div>
+            {signupEmail && <div className="mt-1 text-zinc-400">Account: {signupEmail}</div>}
+            {verificationPreviewUrl && (
+              <a href={verificationPreviewUrl} className="mt-2 inline-block text-cyan-400 hover:text-cyan-300 underline">
+                Open local verification link
+              </a>
+            )}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-1.5">Email</label>
             <input
               type="email"
               value={form.email}
-              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               required
               className="w-full bg-zinc-900 border border-zinc-700 focus:border-cyan-500 text-zinc-100 rounded-lg px-4 py-3 text-sm outline-none transition-colors placeholder:text-zinc-600"
               placeholder="you@example.com"
@@ -73,10 +86,10 @@ export default function Login() {
             <input
               type="password"
               value={form.password}
-              onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
               required
               className="w-full bg-zinc-900 border border-zinc-700 focus:border-cyan-500 text-zinc-100 rounded-lg px-4 py-3 text-sm outline-none transition-colors placeholder:text-zinc-600"
-              placeholder="••••••••"
+              placeholder="********"
             />
           </div>
 
@@ -91,7 +104,7 @@ export default function Login() {
             disabled={loading}
             className="w-full bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-900 font-semibold py-3 rounded-lg text-sm transition-colors"
           >
-            {loading ? 'Signing in…' : 'Sign In'}
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
 
           <button

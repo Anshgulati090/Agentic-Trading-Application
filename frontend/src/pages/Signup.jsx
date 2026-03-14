@@ -6,18 +6,33 @@ export default function Signup() {
   const { register } = useAuth();
   const navigate = useNavigate();
 
-  const [form, setForm] = useState({ email: '', password: '', full_name: '' });
+  const [form, setForm] = useState({ email: '', password: '', confirmPassword: '', full_name: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (form.password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (form.password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     setLoading(true);
     try {
-      await register(form.email, form.password, form.full_name);
-      navigate('/dashboard');
+      const response = await register(form.email, form.password, form.full_name);
+      navigate('/login', {
+        replace: true,
+        state: {
+          message: response.message || 'Account created. Please verify your email before signing in.',
+          email: form.email,
+          verificationPreviewUrl: response.verification_preview_url || '',
+        },
+      });
     } catch (err) {
       setError(err.message || 'Registration failed');
     } finally {
@@ -36,14 +51,13 @@ export default function Signup() {
             <span className="font-semibold text-zinc-100">AgenticTrading</span>
           </Link>
           <h1 className="text-2xl font-light text-zinc-100 tracking-tight">Create your account</h1>
-          <p className="text-sm text-zinc-500 mt-1">Get $100,000 paper trading balance free</p>
+          <p className="text-sm text-zinc-500 mt-1">Get your free demo balance and verify your email to continue</p>
         </div>
 
-        {/* Perks */}
         <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 mb-6 space-y-2">
-          {['$100,000 demo trading balance', 'Real-time AI signal stream', 'Full portfolio analytics', 'No credit card required'].map(p => (
-            <div key={p} className="flex items-center gap-2 text-xs text-zinc-400 font-mono">
-              <span className="text-emerald-400">✓</span> {p}
+          {['$100,000 demo trading balance', 'Real-time AI signal stream', 'Full portfolio analytics', 'No credit card required'].map((perk) => (
+            <div key={perk} className="flex items-center gap-2 text-xs text-zinc-400 font-mono">
+              <span className="text-emerald-400">+</span> {perk}
             </div>
           ))}
         </div>
@@ -54,7 +68,7 @@ export default function Signup() {
             <input
               type="text"
               value={form.full_name}
-              onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
               className="w-full bg-zinc-900 border border-zinc-700 focus:border-cyan-500 text-zinc-100 rounded-lg px-4 py-3 text-sm outline-none transition-colors placeholder:text-zinc-600"
               placeholder="John Doe"
             />
@@ -64,7 +78,7 @@ export default function Signup() {
             <input
               type="email"
               value={form.email}
-              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               required
               className="w-full bg-zinc-900 border border-zinc-700 focus:border-cyan-500 text-zinc-100 rounded-lg px-4 py-3 text-sm outline-none transition-colors placeholder:text-zinc-600"
               placeholder="you@example.com"
@@ -75,11 +89,23 @@ export default function Signup() {
             <input
               type="password"
               value={form.password}
-              onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
               required
               minLength={6}
               className="w-full bg-zinc-900 border border-zinc-700 focus:border-cyan-500 text-zinc-100 rounded-lg px-4 py-3 text-sm outline-none transition-colors placeholder:text-zinc-600"
               placeholder="Min. 6 characters"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-mono text-zinc-400 uppercase tracking-wider mb-1.5">Confirm Password</label>
+            <input
+              type="password"
+              value={form.confirmPassword}
+              onChange={(e) => setForm((f) => ({ ...f, confirmPassword: e.target.value }))}
+              required
+              minLength={6}
+              className="w-full bg-zinc-900 border border-zinc-700 focus:border-cyan-500 text-zinc-100 rounded-lg px-4 py-3 text-sm outline-none transition-colors placeholder:text-zinc-600"
+              placeholder="Repeat your password"
             />
           </div>
 
@@ -94,7 +120,7 @@ export default function Signup() {
             disabled={loading}
             className="w-full bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-zinc-900 font-semibold py-3 rounded-lg text-sm transition-colors"
           >
-            {loading ? 'Creating account…' : 'Create Free Account'}
+            {loading ? 'Creating account...' : 'Create Free Account'}
           </button>
         </form>
 

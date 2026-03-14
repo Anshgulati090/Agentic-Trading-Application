@@ -22,7 +22,7 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  useEffect(() => { fetchMe(token); }, [token]);
+  useEffect(() => { fetchMe(token); }, [fetchMe, token]);
 
   const login = useCallback(async (email, password) => {
     const data = await api.login(email, password);
@@ -34,13 +34,11 @@ export function AuthProvider({ children }) {
 
   const register = useCallback(async (email, password, full_name) => {
     const data = await api.register(email, password, full_name);
-    localStorage.setItem('token', data.access_token);
-    setToken(data.access_token);
-    setUser(data.user);
     return data;
   }, []);
 
   const logout = useCallback(() => {
+    api.logout().catch(() => {});
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);

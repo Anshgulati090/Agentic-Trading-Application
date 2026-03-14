@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 export class ApiError extends Error {
   constructor(status, message) {
@@ -24,6 +24,9 @@ async function request(path, options = {}, token = null) {
     if (!res.ok) {
       let errMsg = `HTTP ${res.status}`;
       try { const body = await res.json(); errMsg = body.detail || body.message || errMsg; } catch {}
+      if (res.status === 401) {
+        localStorage.removeItem('token');
+      }
       throw new ApiError(res.status, errMsg);
     }
     const text = await res.text();
@@ -43,6 +46,13 @@ function authReq(path, options = {}) {
   return request(path, options, getToken());
 }
 
+function unwrap(payload) {
+  if (payload && typeof payload === 'object' && 'data' in payload) {
+    return payload.data;
+  }
+  return payload;
+}
+
 export const api = {
   // Auth
   register: (email, password, full_name) =>
@@ -51,6 +61,8 @@ export const api = {
     request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   logout: () => request('/auth/logout', { method: 'POST' }),
   getMe: (token) => request('/auth/me', {}, token),
+  verifyEmail: (token) => request('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) }),
+  resendVerification: (email) => request('/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email }) }),
 
   // Health
   getHealth: () => request('/health'),
@@ -74,8 +86,22 @@ export const api = {
   getDemoTrades: (limit = 50) => authReq(`/demo/trades?limit=${limit}`),
   resetDemoAccount: () => authReq('/demo/reset', { method: 'DELETE' }),
 
+  // Learning
+  getLearningAccount: async () => unwrap(await authReq('/learning/account')),
+  getLearningAgents: async () => unwrap(await request('/learning/agents')),
+  executeLearningTrade: async (payload) => unwrap(await authReq('/learning/trade', { method: 'POST', body: JSON.stringify(payload) })),
+
+  // Profile
+  getProfile: async () => unwrap(await authReq('/profile/me')),
+  updateProfile: async (payload) => unwrap(await authReq('/profile/me', { method: 'PUT', body: JSON.stringify(payload) })),
+  changePassword: async (payload) => unwrap(await authReq('/profile/password', { method: 'POST', body: JSON.stringify(payload) })),
+  refillDemoBalance: async (mode = 'free') => unwrap(await authReq('/profile/refill', { method: 'POST', body: JSON.stringify({ mode }) })),
+
   // Agents
   executeAgent: (payload) => authReq('/agents/execute', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // AI assistant
+  askAssistant: async (message) => unwrap(await request('/ai/assistant', { method: 'POST', body: JSON.stringify({ message }) })),
 };
 
 export const SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA'];

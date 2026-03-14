@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import AssistantPanel from './components/AssistantPanel';
+import MarketPulseBar from './components/MarketPulseBar';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -12,9 +14,12 @@ import Markets from './pages/Markets';
 import MarketDetail from './pages/MarketDetail';
 import Portfolio from './pages/Portfolio';
 import Learn from './pages/Learn';
+import Agents from './pages/Agents';
+import Profile from './pages/Profile';
+import VerifyEmail from './pages/VerifyEmail';
 
 // Pages that render their own navbar (full-page layouts)
-const FULL_PAGE_ROUTES = ['/', '/login', '/signup'];
+const FULL_PAGE_ROUTES = ['/', '/login', '/signup', '/verify-email'];
 
 function AppLayout() {
   const location = useLocation();
@@ -23,21 +28,29 @@ function AppLayout() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       {/* Show shared navbar on all pages except landing/auth */}
-      {!isFullPage && <Navbar />}
+      {!isFullPage && (
+        <>
+          <Navbar />
+          <MarketPulseBar />
+        </>
+      )}
 
-      <main className={isFullPage ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6'}>
+      <main className={isFullPage ? '' : 'max-w-[1820px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-7'}>
         <Routes>
           {/* Public */}
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
           <Route path="/markets" element={<Markets />} />
           <Route path="/markets/:symbol" element={<MarketDetail />} />
           <Route path="/learn" element={<Learn />} />
+          <Route path="/agents" element={<Agents />} />
 
           {/* Dashboard & Portfolio: accessible without auth, but richer when signed in */}
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/portfolio" element={<Portfolio />} />
+          <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
           {/* 404 */}
           <Route path="*" element={
@@ -49,6 +62,7 @@ function AppLayout() {
           } />
         </Routes>
       </main>
+      {!isFullPage && <AssistantPanel />}
     </div>
   );
 }
