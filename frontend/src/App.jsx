@@ -67,10 +67,10 @@ function Navbar({ user, onLogout }) {
   );
 
   return (
-    <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/90 backdrop-blur px-4 py-3">
-      <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-4 justify-between">
+    <header className="sticky top-0 z-40 border-b border-zinc-800/80 bg-zinc-950/90 backdrop-blur px-3 sm:px-4 py-3">
+      <div className="mx-auto flex w-full max-w-[1680px] flex-wrap items-center gap-4 justify-between">
         <Link to="/" className="text-zinc-100 font-semibold tracking-tight">AgenticTrading</Link>
-        <nav className="flex items-center gap-4">
+        <nav className="flex items-center gap-3 sm:gap-4 flex-wrap">
           {navItem("/", "Home")}
           {navItem("/markets", "Markets")}
           {navItem("/learn", "Learn")}
@@ -79,8 +79,8 @@ function Navbar({ user, onLogout }) {
           {!user && navItem("/login", "Login")}
           {!user && navItem("/signup", "Signup")}
         </nav>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex items-center gap-3 flex-wrap justify-end">
+          <div className="relative w-full sm:w-auto">
             <form onSubmit={submit}>
               <input
                 value={search}
@@ -88,11 +88,11 @@ function Navbar({ user, onLogout }) {
                 onBlur={() => window.setTimeout(() => setOpen(false), 120)}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search Nvidia, Tesla, Bitcoin"
-                className="w-64 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100"
+                className="w-full sm:w-64 rounded-xl border border-zinc-700 bg-zinc-900/90 px-3 py-2.5 text-sm text-zinc-100"
               />
             </form>
             {open && suggestions.length > 0 && (
-              <div className="absolute right-0 mt-2 w-80 rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl overflow-hidden">
+              <div className="absolute right-0 mt-2 w-full sm:w-80 rounded-2xl border border-zinc-800 bg-zinc-950/95 shadow-2xl overflow-hidden">
                 {suggestions.map((item) => (
                   <button
                     key={item.symbol}
@@ -146,8 +146,8 @@ function Shell({ user, setUser }) {
   return (
     <>
       <Navbar user={user} onLogout={handleLogout} />
-      <main className="min-h-[calc(100vh-72px)] bg-zinc-950 text-zinc-100">
-        <div className="max-w-7xl mx-auto px-4 py-6">
+      <main className="min-h-[calc(100vh-72px)] bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.08),transparent_22%),linear-gradient(180deg,#09090b,#0b0b10)] text-zinc-100">
+        <div className="mx-auto w-full max-w-[1680px] px-3 sm:px-4 lg:px-6 py-4 sm:py-6">
           <Routes>
             <Route path="/" element={<Landing />} />
             <Route path="/learn" element={<Learn />} />

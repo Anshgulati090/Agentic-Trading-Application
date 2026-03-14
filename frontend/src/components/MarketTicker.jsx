@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, SYMBOLS, getMockPriceHistory } from '../services/api';
+import { api, SYMBOLS } from '../services/api';
 
 // Stable mock baseline — doesn't re-randomize on every render
 const MOCK_BASES = { AAPL: 189.5, MSFT: 378.2, GOOGL: 141.8, AMZN: 182.4, TSLA: 248.7, META: 503.1, NVDA: 875.4 };
@@ -50,7 +50,7 @@ export default function MarketTicker({ onSelectSymbol }) {
   };
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-7 gap-2.5">
       {SYMBOLS.map((sym) => {
         const p = prices[sym];
         const isPos = (p?.change ?? 0) >= 0;
@@ -59,10 +59,10 @@ export default function MarketTicker({ onSelectSymbol }) {
           <button
             key={sym}
             onClick={() => handleSelect(sym)}
-            className={`flex flex-col p-2.5 rounded border transition-all text-left ${
+            className={`flex min-h-[84px] flex-col justify-between p-3 rounded-xl border transition-all text-left ${
               isSelected
-                ? 'border-cyan-500/50 bg-cyan-500/5'
-                : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-600'
+                ? 'border-cyan-500/50 bg-cyan-500/8 shadow-[0_0_0_1px_rgba(34,211,238,0.08)]'
+                : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-600 hover:bg-zinc-900/80'
             }`}
           >
             <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">{sym}</span>
