@@ -1,20 +1,19 @@
 {
   "name": "agentic-trading-frontend",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --config vite.config.cjs --host 0.0.0.0 --port 3000 --strictPort",
-    "build": "vite build --config vite.config.cjs",
-    "preview": "vite preview --config vite.config.cjs --host 0.0.0.0 --port 3000 --strictPort"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "lightweight-charts": "^5.0.8",
-    "lucide-react": "^0.577.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0",
-    "recharts": "^2.15.4"
+    "react-router-dom": "^6.26.0",
+    "lightweight-charts": "^4.1.3",
+    "recharts": "^2.12.7"
   },
   "devDependencies": {
     "@types/react": "^18.3.3",

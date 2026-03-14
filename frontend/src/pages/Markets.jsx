@@ -1,141 +1,156 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { getFeaturedMarkets, getMarketProfile, searchMarkets } from "../data/marketCatalog";
-import { api } from "../services/api";
+import { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
+import { api, SYMBOLS } from '../services/api';
 
-const FILTERS = ["All", "Equity", "ETF", "Crypto"];
+const POPULAR = [
+  { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology' },
+  { symbol: 'MSFT', name: 'Microsoft Corp.', sector: 'Technology' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology' },
+  { symbol: 'AMZN', name: 'Amazon.com Inc.', sector: 'Consumer' },
+  { symbol: 'TSLA', name: 'Tesla Inc.', sector: 'Auto' },
+  { symbol: 'META', name: 'Meta Platforms', sector: 'Technology' },
+  { symbol: 'NVDA', name: 'NVIDIA Corp.', sector: 'Technology' },
+  { symbol: 'BTC-USD', name: 'Bitcoin', sector: 'Crypto' },
+  { symbol: 'ETH-USD', name: 'Ethereum', sector: 'Crypto' },
+  { symbol: 'SPY', name: 'S&P 500 ETF', sector: 'ETF' },
+];
 
-export default function Markets() {
-  const [params, setParams] = useSearchParams();
-  const queryParam = params.get("q") ?? "";
-  const [query, setQuery] = useState(queryParam);
-  const [filter, setFilter] = useState("All");
-  const navigate = useNavigate();
+function PriceCard({ symbol, name, sector }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setQuery(queryParam);
-  }, [queryParam]);
+    api.getMarketPrice(symbol)
+      .then(d => setData(d?.data || d))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [symbol]);
 
-  const matches = useMemo(() => {
-    const searched = searchMarkets(query);
-    if (filter === "All") return searched;
-    return searched.filter((item) => item.type === filter);
-  }, [filter, query]);
-
-  const featured = useMemo(() => getFeaturedMarkets(), []);
-
-  const submit = async (event) => {
-    event.preventDefault();
-    const nextQuery = query.trim();
-    setParams(nextQuery ? { q: nextQuery } : {});
-
-    const resolved = nextQuery ? await api.resolveSymbol(nextQuery).catch(() => null) : null;
-    const exact = resolved ?? searchMarkets(nextQuery).find((item) => item.symbol === nextQuery.toUpperCase());
-    if (nextQuery && exact?.symbol) {
-      navigate(`/markets/${exact.symbol}`);
-    }
-  };
+  const price = data?.price ?? data;
+  const change = data?.change;
+  const changePct = data?.change_pct;
+  const isPos = (change ?? 0) >= 0;
 
   return (
-    <div className="space-y-8">
-      <section className="grid lg:grid-cols-[1.2fr,0.8fr] gap-6 items-start">
+    <Link
+      to={`/markets/${symbol}`}
+      className="bg-zinc-900/60 border border-zinc-800 hover:border-zinc-600 rounded-xl p-4 transition-all hover:bg-zinc-900 group"
+    >
+      <div className="flex items-start justify-between mb-3">
         <div>
-          <div className="text-cyan-400 font-mono text-xs uppercase tracking-[0.3em] mb-3">Markets</div>
-          <h1 className="text-4xl font-light text-zinc-100">Search live instruments and compare how each market trades.</h1>
-          <p className="text-zinc-400 mt-3 max-w-2xl">
-            Explore equities, ETFs, and crypto. Open a dedicated market page for real-time pricing, interactive chart views from minutes to months, signals, and guided demo execution.
-          </p>
+          <div className="font-mono font-semibold text-zinc-100 group-hover:text-cyan-400 transition-colors">{symbol}</div>
+          <div className="text-xs text-zinc-500 mt-0.5">{name}</div>
         </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
-          <div className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono">What feels different now</div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-zinc-300">Minute, hour, day, week, month, and year chart views</div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-zinc-300">Dedicated market identity with sector, type, and context</div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-zinc-300">Signal stream and learning trade entry on each market page</div>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3 text-zinc-300">Broader market coverage instead of a tiny static list</div>
+        <span className="text-[10px] font-mono text-zinc-600 bg-zinc-800 px-2 py-0.5 rounded">{sector}</span>
+      </div>
+      {loading ? (
+        <div className="h-7 w-24 bg-zinc-800 animate-pulse rounded" />
+      ) : price ? (
+        <div className="flex items-end justify-between">
+          <div className="text-xl font-light text-zinc-100 tabular-nums font-mono">
+            ${typeof price === 'number' ? price.toFixed(2) : price}
           </div>
-        </div>
-      </section>
-
-      <form onSubmit={submit} className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-4">
-        <div className="flex flex-col lg:flex-row gap-3">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search AAPL, TSLA, NVDA, BTC, SPY, QQQ"
-            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-3 text-zinc-100"
-          />
-          <button className="rounded-lg border border-cyan-500/40 bg-cyan-500/10 px-5 py-3 text-cyan-300 hover:bg-cyan-500/20">
-            Search Markets
-          </button>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {FILTERS.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setFilter(item)}
-              className={`rounded-full border px-3 py-1 text-xs uppercase tracking-widest ${filter === item ? "border-cyan-500/40 bg-cyan-500/10 text-cyan-300" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"}`}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      </form>
-
-      <section className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-zinc-100 text-xl">Featured Markets</div>
-            <div className="text-zinc-500 text-sm">Fast jump into the most useful practice symbols.</div>
-          </div>
-        </div>
-        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {featured.map((item) => (
-            <Link key={item.symbol} to={`/markets/${item.symbol}`} className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 hover:border-cyan-500/40 transition">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-zinc-100 text-xl">{item.symbol}</div>
-                  <div className="text-zinc-400 mt-1">{item.name}</div>
-                </div>
-                <span className="rounded-full border border-zinc-700 px-2 py-1 text-[10px] uppercase tracking-widest text-zinc-400">{item.type}</span>
-              </div>
-              <div className="text-zinc-500 text-sm mt-3">{item.description}</div>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="space-y-4">
-        <div>
-          <div className="text-zinc-100 text-xl">Search Results</div>
-          <div className="text-zinc-500 text-sm">{matches.length} market{matches.length === 1 ? "" : "s"} matched.</div>
-        </div>
-        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-          {matches.map((item) => (
-            <Link key={item.symbol} to={`/markets/${item.symbol}`} className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5 hover:border-cyan-500/40 transition">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-zinc-100 text-xl">{item.symbol}</div>
-                  <div className="text-zinc-400 mt-1">{item.name}</div>
-                </div>
-                <span className="rounded-full border border-zinc-700 px-2 py-1 text-[10px] uppercase tracking-widest text-zinc-400">{item.exchange}</span>
-              </div>
-              <div className="text-zinc-500 text-sm mt-3">{item.sector} - {item.type}</div>
-              <div className="flex gap-2 flex-wrap mt-4">
-                {(item.tags || []).slice(0, 3).map((tag) => (
-                  <span key={tag} className="rounded-full border border-zinc-700 px-2 py-1 text-[10px] uppercase tracking-widest text-zinc-400">{tag}</span>
-                ))}
-              </div>
-            </Link>
-          ))}
-          {!matches.length && (
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6 text-zinc-500">
-              No direct matches yet. Try a ticker like <span className="text-zinc-300">AAPL</span>, <span className="text-zinc-300">SPY</span>, or <span className="text-zinc-300">BTC</span>.
+          {change != null && (
+            <div className={`text-xs font-mono tabular-nums ${isPos ? 'text-emerald-400' : 'text-red-400'}`}>
+              {isPos ? '+' : ''}{change.toFixed(2)} ({isPos ? '+' : ''}{((changePct ?? 0) * 100).toFixed(2)}%)
             </div>
           )}
         </div>
-      </section>
+      ) : (
+        <div className="text-xs text-zinc-600 font-mono">No data</div>
+      )}
+    </Link>
+  );
+}
+
+export default function Markets() {
+  const [query, setQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+
+  const handleSearch = useCallback(async (q) => {
+    if (!q.trim()) { setSearchResults([]); return; }
+    setSearching(true);
+    try {
+      const res = await api.searchSymbols(q);
+      setSearchResults(res?.results || []);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(() => handleSearch(query), 300);
+    return () => clearTimeout(t);
+  }, [query, handleSearch]);
+
+  const showResults = query.length > 0;
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      {/* Header */}
+      <div className="border-b border-zinc-800 bg-zinc-900/30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h1 className="text-2xl font-light tracking-tight">Markets</h1>
+              <p className="text-sm text-zinc-500 font-mono mt-0.5">Search any symbol to view live data & signals</p>
+            </div>
+            <Link to="/dashboard" className="text-sm text-zinc-400 hover:text-cyan-400 transition-colors">← Dashboard</Link>
+          </div>
+
+          {/* Search */}
+          <div className="relative max-w-lg">
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <input
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search symbol or company… (AAPL, Tesla, BTC)"
+              className="w-full bg-zinc-900 border border-zinc-700 focus:border-cyan-500 text-zinc-100 rounded-xl pl-11 pr-4 py-3.5 text-sm outline-none transition-colors placeholder:text-zinc-600"
+            />
+            {showResults && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl shadow-black/50 z-50 overflow-hidden">
+                {searching ? (
+                  <div className="px-4 py-3 text-xs text-zinc-500 font-mono">Searching…</div>
+                ) : searchResults.length > 0 ? (
+                  searchResults.map(r => (
+                    <Link
+                      key={r.symbol}
+                      to={`/markets/${r.symbol}`}
+                      className="flex items-center justify-between px-4 py-3 hover:bg-zinc-800 transition-colors"
+                      onClick={() => setQuery('')}
+                    >
+                      <div>
+                        <span className="font-mono font-semibold text-cyan-400">{r.symbol}</span>
+                        <span className="text-xs text-zinc-500 ml-2">{r.name}</span>
+                      </div>
+                      <span className="text-[10px] text-zinc-600 bg-zinc-800 px-2 py-0.5 rounded">{r.sector}</span>
+                    </Link>
+                  ))
+                ) : (
+                  <div className="px-4 py-3 text-xs text-zinc-500 font-mono">No results for "{query}"</div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Grid */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="text-xs font-mono text-zinc-500 uppercase tracking-widest mb-4">Popular Markets</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {POPULAR.map(p => (
+            <PriceCard key={p.symbol} {...p} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

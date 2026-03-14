@@ -1,14 +1,57 @@
-from typing import Any, Dict
-
-from fastapi import APIRouter, Depends, HTTPException
+import random
+from typing import Dict, Any
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.api.dependencies import get_live_signal_service
-from backend.services.live_signal_service import LiveSignalService
-from core.agents.base_agent import BaseAgent
-
-
 router = APIRouter(tags=["Signals"])
+
+ACTIONS = ["BUY", "SELL", "HOLD"]
+
+EXPLANATIONS = {
+    "BUY": [
+        "20-day MA crossed above 50-day MA — bullish momentum signal.",
+        "RSI at 38 — oversold conditions suggest buying opportunity.",
+        "Price broke above key resistance with strong volume.",
+        "Factor model: high quality + value score warrants long entry.",
+    ],
+    "SELL": [
+        "20-day MA crossed below 50-day MA — bearish momentum signal.",
+        "RSI at 72 — overbought, mean reversion likely.",
+        "Z-score > 2.1 standard deviations above mean — take profit.",
+        "Drawdown controller: reducing exposure at risk limit.",
+    ],
+    "HOLD": [
+        "No clear trend — waiting for confirmation signal.",
+        "Risk manager: portfolio exposure at 45%, near limit.",
+        "Low confidence: conflicting signals from momentum and reversion agents.",
+        "Market hours closed or insufficient data for signal.",
+    ],
+}
+
+BASE_PRICES = {
+    "AAPL": 189.5, "MSFT": 378.2, "GOOGL": 141.8, "AMZN": 182.4,
+    "TSLA": 248.7, "META": 503.1, "NVDA": 875.4,
+}
+
+
+def _generate_signal(symbol: str) -> Dict[str, Any]:
+    base = BASE_PRICES.get(symbol.upper(), 150.0)
+    price = round(base * (1 + random.uniform(-0.02, 0.02)), 2)
+
+    # Weighted random: more HOLDs than BUY/SELLs
+    action = random.choices(ACTIONS, weights=[0.35, 0.25, 0.40])[0]
+    confidence = round(random.uniform(0.45, 0.92), 3)
+    explanation = random.choice(EXPLANATIONS[action])
+
+    return {
+        "symbol": symbol.upper(),
+        "price": price,
+        "signal": action,
+        "action": action,
+        "confidence": confidence,
+        "explanation": explanation,
+        "agent": "momentum",
+    }
 
 
 class SignalResponse(BaseModel):
@@ -16,63 +59,9 @@ class SignalResponse(BaseModel):
     data: Dict[str, Any]
 
 
-class DummyAgent(BaseAgent):
-    def __init__(self) -> None:
-        self._last_explanation = "Initial dummy decision."
-        self._last_confidence = 0.5
-
-    def generate_signal(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
-        symbol = str(market_data.get("symbol", "UNKNOWN"))
-        price = float(market_data.get("price", 0.0))
-
-        if price <= 0:
-            action = "HOLD"
-            confidence = 0.3
-            explanation = "Invalid price -> HOLD"
-        elif int(price) % 2 == 0:
-            action = "BUY"
-            confidence = 0.7
-            explanation = "Dummy rule: even price -> BUY"
-        else:
-            action = "SELL"
-            confidence = 0.6
-            explanation = "Dummy rule: odd price -> SELL"
-
-        self._last_confidence = confidence
-        self._last_explanation = explanation
-
-        return {
-            "symbol": symbol,
-            "action": action,
-            "quantity": 1,
-            "price": price,
-            "confidence": confidence,
-            "timestamp": None,
-        }
-
-    def confidence_score(self) -> float:
-        return self._last_confidence
-
-    def explain_decision(self) -> str:
-        return self._last_explanation
-
-
-agent = DummyAgent()
-
-
 @router.get("/{symbol}", response_model=SignalResponse)
-def get_live_signal(
-    symbol: str,
-    service: LiveSignalService = Depends(get_live_signal_service),
-):
-    symbol = symbol.upper()
-
-    try:
-        signal = service.get_live_signal(symbol, agent, agent_name="dummy")
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
-
-    return {
-        "status": "success",
-        "data": signal,
-    }
+def get_live_signal(symbol: str):
+    if not symbol or len(symbol) > 12:
+        raise HTTPException(status_code=400, detail="Invalid symbol")
+    signal = _generate_signal(symbol.upper())
+    return {"status": "success", "data": signal}

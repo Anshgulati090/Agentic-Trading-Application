@@ -1,167 +1,128 @@
-import secrets
-from datetime import datetime
-
-from pydantic import BaseModel, Field
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from pydantic import BaseModel, EmailStr, field_validator
+from datetime import datetime
+from typing import Optional
 
-from backend.api.dependencies import get_current_user, get_db
+from backend.db.session import get_db
+from backend.db.models.user import User, DemoAccount
+from backend.auth.jwt_handler import hash_password, verify_password, create_access_token, get_current_user
 from backend.config.settings import get_settings
-from backend.db.models.user import User
-from backend.security.auth import create_token, hash_password, verify_password
-from backend.services.email_service import EmailService
+
+router = APIRouter(prefix="/auth", tags=["Authentication"])
+settings = get_settings()
 
 
-router = APIRouter(tags=["Auth"])
-email_service = EmailService()
-
+# ── Schemas ────────────────────────────────────────────────────────────────
 
 class RegisterRequest(BaseModel):
-    email: str
-    password: str = Field(..., min_length=8)
-    display_name: str = Field(..., min_length=2)
+    email: EmailStr
+    password: str
+    full_name: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v):
+        if len(v) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return v
 
 
 class LoginRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
 
 
-class VerifyEmailRequest(BaseModel):
-    token: str
-
-
-class ResendVerificationRequest(BaseModel):
+class UserResponse(BaseModel):
+    id: int
     email: str
+    full_name: Optional[str]
+    created_at: datetime
+    is_demo_user: bool
+    demo_balance: Optional[float] = None
+
+    class Config:
+        from_attributes = True
 
 
-def _serialize_user(user: User) -> dict:
-    return {
-        "id": user.id,
-        "email": user.email,
-        "username": user.username,
-        "display_name": user.display_name,
-        "created_at": user.created_at.isoformat(),
-        "is_demo_user": user.is_demo_user,
-        "is_active": user.is_active,
-        "email_verified": user.email_verified,
-        "demo_balance": user.demo_balance,
-    }
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
 
 
-def _send_verification(user: User) -> None:
-    settings = get_settings()
-    verification_url = f"{settings.APP_BASE_URL.rstrip('/')}/verify-email?token={user.email_verification_token}"
-    email_service.send_verification_email(user.email, verification_url)
+# ── Helpers ────────────────────────────────────────────────────────────────
+
+def _user_to_response(user: User) -> UserResponse:
+    balance = user.demo_account.balance if user.demo_account else None
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        created_at=user.created_at,
+        is_demo_user=user.is_demo_user,
+        demo_balance=balance,
+    )
 
 
-@router.post("/register")
+def _create_demo_account(db: Session, user: User):
+    account = DemoAccount(
+        user_id=user.id,
+        balance=settings.DEMO_BALANCE,
+        initial_balance=settings.DEMO_BALANCE,
+    )
+    db.add(account)
+    db.flush()
+    return account
+
+
+# ── Routes ─────────────────────────────────────────────────────────────────
+
+@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterRequest, db: Session = Depends(get_db)):
-    email = payload.email.strip().lower()
-    if "@" not in email:
-        raise HTTPException(status_code=400, detail="Enter a valid email address")
-    existing = db.query(User).filter(User.email == email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Email is already registered")
-
-    base_name = payload.display_name.strip() or email.split("@")[0]
-    username_base = "".join(ch.lower() for ch in base_name if ch.isalnum()) or "trader"
-    username = username_base
-    suffix = 1
-    while db.query(User).filter(User.username == username).first():
-        suffix += 1
-        username = f"{username_base}{suffix}"
+    if db.query(User).filter(User.email == payload.email).first():
+        raise HTTPException(status_code=400, detail="Email already registered")
 
     user = User(
-        email=email,
-        username=username,
-        display_name=payload.display_name.strip(),
+        email=payload.email,
         password_hash=hash_password(payload.password),
+        full_name=payload.full_name,
         is_demo_user=True,
-        is_active=False,
-        email_verified=False,
-        email_verification_token=secrets.token_urlsafe(32),
-        verification_sent_at=datetime.utcnow(),
-        demo_balance=100000.0,
     )
     db.add(user)
-    db.commit()
-    db.refresh(user)
-    _send_verification(user)
-
-    return {
-        "status": "success",
-        "data": {
-            "message": "Account created. Verify your email before logging in.",
-            "verification_required": True,
-            "email": user.email,
-        },
-    }
-
-
-@router.post("/verify-email")
-def verify_email(payload: VerifyEmailRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email_verification_token == payload.token).first()
-    if not user:
-        raise HTTPException(status_code=400, detail="Invalid verification token")
-
-    user.email_verified = True
-    user.is_active = True
-    user.email_verification_token = None
+    db.flush()
+    _create_demo_account(db, user)
     db.commit()
     db.refresh(user)
 
-    return {
-        "status": "success",
-        "data": {
-            "message": "Email verified. You can now log in.",
-            "user": _serialize_user(user),
-        },
-    }
+    token = create_access_token({"sub": str(user.id)})
+    return TokenResponse(access_token=token, user=_user_to_response(user))
 
 
-@router.post("/resend-verification")
-def resend_verification(payload: ResendVerificationRequest, db: Session = Depends(get_db)):
-    email = payload.email.strip().lower()
-    user = db.query(User).filter(User.email == email).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if user.email_verified:
-        raise HTTPException(status_code=400, detail="Email is already verified")
-
-    user.email_verification_token = secrets.token_urlsafe(32)
-    user.verification_sent_at = datetime.utcnow()
-    db.commit()
-    db.refresh(user)
-    _send_verification(user)
-
-    return {"status": "success", "data": {"message": "Verification email sent"}}
-
-
-@router.post("/login")
+@router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
-    email = payload.email.strip().lower()
-    if "@" not in email:
-        raise HTTPException(status_code=400, detail="Enter a valid email address")
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    if not user.email_verified:
-        raise HTTPException(status_code=403, detail="Verify your email before logging in")
     if not user.is_active:
-        raise HTTPException(status_code=403, detail="This account is inactive")
+        raise HTTPException(status_code=403, detail="Account disabled")
 
-    return {
-        "token": create_token(user.email),
-        "user": _serialize_user(user),
-    }
+    # Ensure demo account exists
+    if not user.demo_account:
+        _create_demo_account(db, user)
+        db.commit()
+        db.refresh(user)
+
+    token = create_access_token({"sub": str(user.id)})
+    return TokenResponse(access_token=token, user=_user_to_response(user))
 
 
 @router.post("/logout")
 def logout():
-    return {"status": "success", "data": {"message": "Logged out"}}
+    # JWT is stateless; client discards the token
+    return {"message": "Logged out successfully"}
 
 
-@router.get("/me")
-def me(user: User = Depends(get_current_user)):
-    return {"status": "success", "data": _serialize_user(user)}
+@router.get("/me", response_model=UserResponse)
+def get_me(current_user: User = Depends(get_current_user)):
+    return _user_to_response(current_user)

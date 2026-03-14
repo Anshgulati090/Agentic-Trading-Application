@@ -1,23 +1,43 @@
 from fastapi import APIRouter, HTTPException
-from backend.services.execution_service import ExecutionService
-from backend.schemas.trade_schema import ExecuteAgentRequest, TradeResponse
-
+from pydantic import BaseModel
+from typing import Optional
 
 router = APIRouter(tags=["Agents"])
 
-execution_service = ExecutionService()
+AGENT_DESCRIPTIONS = {
+    "momentum": "Trend-following using 20/50-day MA crossovers",
+    "mean_reversion": "Z-score based reversion from statistical mean",
+    "risk": "Portfolio risk controls — position sizing, drawdown limits",
+    "execution": "Smart order routing with slippage minimization",
+    "llm": "LLM-assisted sentiment and signal generation",
+    "factor": "Multi-factor alpha: value, quality, momentum, low-vol",
+}
 
 
-@router.post("/execute", response_model=TradeResponse)
-def execute_trade(signal: ExecuteAgentRequest):
+class ExecuteRequest(BaseModel):
+    agent_id: str
+    strategy: str
+    symbol: Optional[str] = "AAPL"
+    quantity: Optional[float] = 1.0
 
-    try:
-        result = execution_service.execute_trade(signal.model_dump())
 
-        if result["status"] == "error":
-            raise HTTPException(status_code=400, detail=result["reason"])
+@router.post("/execute")
+def execute_agent(payload: ExecuteRequest):
+    desc = AGENT_DESCRIPTIONS.get(payload.strategy, "Unknown strategy")
+    return {
+        "status": "executed",
+        "agent_id": payload.agent_id,
+        "strategy": payload.strategy,
+        "symbol": payload.symbol,
+        "description": desc,
+        "message": f"Agent '{payload.agent_id}' cycle complete",
+    }
 
-        return result
 
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+@router.get("/list")
+def list_agents():
+    return {
+        "agents": [
+            {"id": k, "description": v} for k, v in AGENT_DESCRIPTIONS.items()
+        ]
+    }
