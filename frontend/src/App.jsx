@@ -18,7 +18,6 @@ import Agents from './pages/Agents';
 import Profile from './pages/Profile';
 import VerifyEmail from './pages/VerifyEmail';
 
-// Pages that render their own navbar (full-page layouts)
 const FULL_PAGE_ROUTES = ['/', '/login', '/signup', '/verify-email'];
 
 function AppLayout() {
@@ -26,8 +25,7 @@ function AppLayout() {
   const isFullPage = FULL_PAGE_ROUTES.includes(location.pathname);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      {/* Show shared navbar on all pages except landing/auth */}
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)', color: 'var(--text-primary)' }}>
       {!isFullPage && (
         <>
           <Navbar />
@@ -35,7 +33,11 @@ function AppLayout() {
         </>
       )}
 
-      <main className={isFullPage ? '' : 'max-w-[1820px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-7'}>
+      <main style={isFullPage ? {} : {
+        maxWidth: 1680,
+        margin: '0 auto',
+        padding: '24px 20px 40px',
+      }}>
         <Routes>
           {/* Public */}
           <Route path="/" element={<Landing />} />
@@ -46,22 +48,21 @@ function AppLayout() {
           <Route path="/markets/:symbol" element={<MarketDetail />} />
           <Route path="/learn" element={<Learn />} />
           <Route path="/agents" element={<Agents />} />
-
-          {/* Dashboard & Portfolio: accessible without auth, but richer when signed in */}
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
           {/* 404 */}
           <Route path="*" element={
-            <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 text-center">
-              <div className="text-6xl font-light font-mono text-zinc-800">404</div>
-              <p className="text-zinc-500">Page not found</p>
-              <a href="/" className="btn-primary text-sm">Go Home</a>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', gap: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 72, fontFamily: 'var(--font-mono)', fontWeight: 100, color: 'var(--bg-elevated)', lineHeight: 1 }}>404</div>
+              <p style={{ color: 'var(--text-muted)', fontSize: 14 }}>Page not found</p>
+              <a href="/" className="btn-primary">Go Home</a>
             </div>
           } />
         </Routes>
       </main>
+
       {!isFullPage && <AssistantPanel />}
     </div>
   );

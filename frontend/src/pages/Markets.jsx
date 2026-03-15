@@ -4,110 +4,129 @@ import MiniSparkline from '../components/MiniSparkline';
 import { searchMarkets } from '../data/marketCatalog';
 import { api } from '../services/api';
 
-const SIDEBAR_SECTIONS = [
-  'Overview',
-  'World Indices',
-  'Global Markets',
-  'Assets',
-  'Crypto',
-  'Trending',
-];
-
 const MARKET_GROUPS = [
   {
-    id: 'world-indices',
-    title: 'World Indices',
+    id: 'us-equities',
+    label: 'US Equities',
     groups: [
-      { title: 'Americas', symbols: ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX'] },
-      { title: 'Europe', symbols: ['VGK', 'FEZ', 'EZU', 'EWU', 'EWL'] },
-      { title: 'Asia', symbols: ['EWJ', 'MCHI', 'EWA', 'INDA', 'EWH'] },
+      { title: 'Large Cap Tech', symbols: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'NVDA', 'TSLA'] },
+      { title: 'Financial', symbols: ['JPM', 'GS', 'V'] },
+      { title: 'Consumer & Energy', symbols: ['WMT', 'COST', 'XOM', 'CVX'] },
     ],
   },
   {
-    id: 'assets',
-    title: 'Assets',
+    id: 'indices-etfs',
+    label: 'Indices & ETFs',
     groups: [
-      { title: 'Commodities', symbols: ['GLD', 'SLV', 'XOM', 'CVX'] },
-      { title: 'Currencies', symbols: ['UUP', 'FXE', 'FXY', 'FXB'] },
-      { title: 'Treasury Bonds', symbols: ['TLT', 'IEF', 'SHY', 'BIL'] },
+      { title: 'US Indices', symbols: ['SPY', 'QQQ', 'DIA', 'IWM'] },
+      { title: 'Commodities', symbols: ['GLD'] },
     ],
   },
   {
     id: 'crypto',
-    title: 'Crypto Markets',
+    label: 'Crypto',
     groups: [
       { title: 'Digital Assets', symbols: ['BTC', 'ETH', 'SOL'] },
     ],
   },
 ];
 
-function normalizeQuote(payload) {
-  const quote = payload?.data || payload || {};
-  const history = (quote.history || []).map((row) => Number(row.close ?? row.value ?? row.price)).filter(Number.isFinite);
-  return {
-    symbol: quote.symbol,
-    price: Number(quote.price),
-    change: Number(quote.change),
-    changePct: Number(quote.change_pct ?? quote.changePct),
-    volume: Number(quote.volume ?? 0),
-    history,
-  };
+const FEATURED = ['AAPL', 'NVDA', 'TSLA', 'BTC', 'SPY', 'META'];
+
+function fmt(n) {
+  if (!Number.isFinite(n)) return '—';
+  return n >= 1000 ? n.toLocaleString('en-US', { maximumFractionDigits: 0 }) : n.toFixed(2);
 }
 
-function formatPrice(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return '--';
-  return numeric >= 1000
-    ? numeric.toLocaleString('en-US', { maximumFractionDigits: 2 })
-    : numeric.toFixed(2);
+function changeFmt(n) {
+  if (!Number.isFinite(n)) return '—';
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}`;
 }
 
-function formatChange(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return '--';
-  return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}`;
-}
-
-function SectionTable({ title, items, quotes }) {
+/* ─── Market Row (table row) ──────────────────────────────── */
+function MarketRow({ item, quote, loading }) {
+  const pos = (quote?.change ?? 0) >= 0;
   return (
-    <div className="rounded-[24px] border border-zinc-800/80 bg-zinc-900/55">
-      <div className="flex items-center justify-between border-b border-zinc-800/70 px-4 py-3">
-        <div className="text-lg text-zinc-100">{title}</div>
-        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">{items.length} symbols</div>
+    <tr>
+      <td style={{ padding: '10px 16px' }}>
+        <Link to={`/markets/${item.symbol}`} style={{ textDecoration: 'none' }}>
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--accent-cyan)' }}>{item.symbol}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{item.name}</div>
+        </Link>
+      </td>
+      <td style={{ padding: '10px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', padding: '1px 6px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 4, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            {item.sector || item.type || '—'}
+          </span>
+        </div>
+      </td>
+      <td style={{ padding: '10px 16px' }}>
+        {quote?.sparkline?.length > 2 ? (
+          <MiniSparkline points={quote.sparkline} positive={pos} className="h-8 w-16" />
+        ) : loading ? (
+          <div className="skeleton" style={{ width: 64, height: 30, borderRadius: 4 }} />
+        ) : null}
+      </td>
+      <td style={{ padding: '10px 16px', textAlign: 'right' }}>
+        {loading && !quote ? (
+          <div className="skeleton" style={{ width: 60, height: 16, marginLeft: 'auto' }} />
+        ) : (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>
+            ${fmt(quote?.price)}
+          </span>
+        )}
+      </td>
+      <td style={{ padding: '10px 16px', textAlign: 'right' }}>
+        {loading && !quote ? (
+          <div className="skeleton" style={{ width: 50, height: 16, marginLeft: 'auto' }} />
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: pos ? 'var(--accent-green)' : 'var(--accent-red)', fontWeight: 500 }}>
+              {changeFmt(quote?.change)}
+            </span>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: pos ? 'var(--accent-green)' : 'var(--accent-red)', opacity: 0.75 }}>
+              {changeFmt((quote?.changePct ?? 0) * 100)}%
+            </span>
+          </div>
+        )}
+      </td>
+      <td style={{ padding: '10px 16px', textAlign: 'center' }}>
+        <Link to={`/markets/${item.symbol}`} className="btn-ghost" style={{ padding: '4px 10px', fontSize: 11 }}>View</Link>
+      </td>
+    </tr>
+  );
+}
+
+/* ─── Section Table ────────────────────────────────────────── */
+function SectionTable({ title, symbols, quotes, loading }) {
+  const items = useMemo(() =>
+    symbols.map(sym => searchMarkets(sym)[0] || { symbol: sym, name: sym }).filter(Boolean),
+    [symbols]
+  );
+
+  return (
+    <div className="panel" style={{ overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px 10px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{title}</div>
+        <div className="section-kicker">{symbols.length} symbols</div>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[36rem]">
+      <div style={{ overflowX: 'auto' }}>
+        <table className="data-table" style={{ minWidth: 500 }}>
           <thead>
-            <tr className="text-left text-[10px] uppercase tracking-[0.28em] text-zinc-500">
-              <th className="px-4 py-3 font-normal">Symbol</th>
-              <th className="px-4 py-3 font-normal">Name</th>
-              <th className="px-4 py-3 font-normal">Trend</th>
-              <th className="px-4 py-3 font-normal text-right">Price</th>
-              <th className="px-4 py-3 font-normal text-right">Change</th>
+            <tr>
+              <th>Symbol</th>
+              <th>Sector</th>
+              <th>Trend</th>
+              <th style={{ textAlign: 'right' }}>Price</th>
+              <th style={{ textAlign: 'right' }}>Change</th>
+              <th style={{ textAlign: 'center' }}>Action</th>
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => {
-              const quote = quotes[item.symbol];
-              const positive = (quote?.change ?? 0) >= 0;
-              return (
-                <tr key={item.symbol} className="border-t border-zinc-800/60 hover:bg-zinc-800/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <Link to={`/markets/${item.symbol}`} className="font-mono text-cyan-400 hover:text-cyan-300">
-                      {item.symbol}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-zinc-300">{item.name}</td>
-                  <td className="px-4 py-3">
-                    <MiniSparkline points={quote?.history || []} positive={positive} className="h-8 w-20" />
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-zinc-100">${formatPrice(quote?.price)}</td>
-                  <td className={`px-4 py-3 text-right font-mono ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {formatChange(quote?.change)} ({formatChange((quote?.changePct ?? 0) * 100)}%)
-                  </td>
-                </tr>
-              );
-            })}
+            {items.map(item => (
+              <MarketRow key={item.symbol} item={item} quote={quotes[item.symbol]} loading={loading} />
+            ))}
           </tbody>
         </table>
       </div>
@@ -115,180 +134,282 @@ function SectionTable({ title, items, quotes }) {
   );
 }
 
+/* ─── Featured Card ────────────────────────────────────────── */
+function FeaturedCard({ symbol, quote, loading }) {
+  const pos = (quote?.change ?? 0) >= 0;
+  const item = searchMarkets(symbol)[0] || { symbol, name: symbol };
+
+  return (
+    <Link to={`/markets/${symbol}`} style={{ textDecoration: 'none' }}>
+      <div style={{
+        padding: '16px',
+        background: 'var(--bg-card)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: 12,
+        transition: 'all 0.15s',
+        cursor: 'pointer',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-default)'; e.currentTarget.style.background = 'var(--bg-hover)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.background = 'var(--bg-card)'; e.currentTarget.style.transform = 'none'; }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent-cyan)' }}>{symbol}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, maxWidth: 80, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.name}</div>
+          </div>
+          {loading && !quote ? null : (
+            <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: pos ? 'var(--accent-green)' : 'var(--accent-red)', fontWeight: 600 }}>
+              {changeFmt((quote?.changePct ?? 0) * 100)}%
+            </span>
+          )}
+        </div>
+        {quote?.sparkline?.length > 2 && (
+          <MiniSparkline points={quote.sparkline} positive={pos} className="h-10 w-full" />
+        )}
+        {loading && !quote ? (
+          <div className="skeleton" style={{ width: '80%', height: 20, marginTop: 8 }} />
+        ) : (
+          <div style={{ marginTop: 8, fontSize: 18, fontFamily: 'var(--font-mono)', fontWeight: 300, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+            ${fmt(quote?.price)}
+          </div>
+        )}
+      </div>
+    </Link>
+  );
+}
+
+/* ─── Markets Page ─────────────────────────────────────────── */
 export default function Markets() {
   const [searchParams] = useSearchParams();
-  const initialQuery = searchParams.get('query') || '';
-  const [query, setQuery] = useState(initialQuery);
+  const [query, setQuery] = useState(searchParams.get('query') || '');
   const [results, setResults] = useState([]);
   const [quotes, setQuotes] = useState({});
+  const [loadingQuotes, setLoadingQuotes] = useState(true);
+  const [activeTab, setActiveTab] = useState('overview');
 
-  const trackedSymbols = useMemo(() => {
-    const groupSymbols = MARKET_GROUPS.flatMap((section) => section.groups.flatMap((group) => group.symbols));
-    const resultSymbols = results.map((item) => item.symbol);
-    return Array.from(new Set([...groupSymbols, ...resultSymbols]));
-  }, [results]);
+  const allSymbols = useMemo(() => {
+    const grouped = MARKET_GROUPS.flatMap(g => g.groups.flatMap(s => s.symbols));
+    const featured = FEATURED;
+    return Array.from(new Set([...featured, ...grouped]));
+  }, []);
 
   const loadQuotes = useCallback(async () => {
     const values = await Promise.allSettled(
-      trackedSymbols.map((symbol) => api.getMarketPrice(symbol).then((payload) => [symbol, normalizeQuote(payload)]))
+      allSymbols.map(sym =>
+        api.getMarketPrice(sym).then(p => [sym, {
+          price: Number(p?.data?.price ?? p?.price),
+          change: Number(p?.data?.change ?? p?.change),
+          changePct: Number(p?.data?.change_pct ?? p?.data?.changePct ?? p?.changePct),
+          sparkline: (p?.data?.history || p?.history || []).map(r => Number(r.close ?? r.price)).filter(Number.isFinite),
+        }])
+      )
     );
-
-    setQuotes((prev) => {
+    setQuotes(prev => {
       const next = { ...prev };
-      values.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          const [symbol, quote] = result.value;
-          next[symbol] = quote;
-        }
-      });
+      values.forEach(r => { if (r.status === 'fulfilled') { const [s, q] = r.value; next[s] = q; } });
       return next;
     });
-  }, [trackedSymbols]);
+    setLoadingQuotes(false);
+  }, [allSymbols]);
 
+  // Search
   useEffect(() => {
     const timer = window.setTimeout(async () => {
-      const trimmed = query.trim();
-      if (!trimmed) {
-        setResults([]);
-        return;
-      }
-
+      const t = query.trim();
+      if (!t) { setResults([]); return; }
       try {
-        const response = await api.searchSymbols(trimmed);
-        const remote = response?.results || [];
-        const local = searchMarkets(trimmed);
-        setResults(Array.from(new Map([...local, ...remote].map((item) => [item.symbol, item])).values()).slice(0, 6));
+        const [remote] = await Promise.allSettled([api.searchSymbols(t)]);
+        const local = searchMarkets(t);
+        const rem = remote.status === 'fulfilled' ? (remote.value?.results || []) : [];
+        setResults(Array.from(new Map([...local, ...rem].map(i => [i.symbol, i])).values()).slice(0, 10));
       } catch {
-        setResults(searchMarkets(trimmed).slice(0, 6));
+        setResults(searchMarkets(t).slice(0, 10));
       }
-    }, 180);
+    }, 200);
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  useEffect(() => {
-    loadQuotes();
-    const timer = window.setInterval(loadQuotes, 12000);
-    return () => window.clearInterval(timer);
-  }, [loadQuotes]);
+  useEffect(() => { loadQuotes(); const t = setInterval(loadQuotes, 15000); return () => clearInterval(t); }, [loadQuotes]);
 
-  const trending = useMemo(() => {
-    return Object.values(quotes)
-      .sort((left, right) => Math.abs(right.changePct ?? 0) - Math.abs(left.changePct ?? 0))
-      .slice(0, 6);
-  }, [quotes]);
+  const trending = useMemo(() =>
+    Object.entries(quotes)
+      .map(([sym, q]) => ({ symbol: sym, ...q }))
+      .sort((a, b) => Math.abs(b.changePct ?? 0) - Math.abs(a.changePct ?? 0))
+      .slice(0, 6),
+    [quotes]
+  );
+
+  const TABS = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'us-equities', label: 'Equities' },
+    { id: 'indices-etfs', label: 'Indices' },
+    { id: 'crypto', label: 'Crypto' },
+  ];
+
+  const activeGroups = activeTab === 'overview'
+    ? MARKET_GROUPS
+    : MARKET_GROUPS.filter(g => g.id === activeTab);
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
-        <aside className="hidden xl:block rounded-[24px] border border-zinc-800/80 bg-zinc-900/55 p-4">
-          <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400">Markets</div>
-          <div className="mt-4 space-y-1">
-            {SIDEBAR_SECTIONS.map((item, index) => (
-              <button
-                key={item}
-                className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
-                  index === 0 ? 'bg-cyan-500/15 text-cyan-300' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
-                }`}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </aside>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        <div className="rounded-[28px] border border-zinc-800/80 bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900/80 px-5 py-6 sm:px-8">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400">Markets Overview</div>
-              <h1 className="mt-3 text-3xl font-light text-zinc-100 sm:text-4xl">Global market dashboard</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-7 text-zinc-400">
-                Scan world indices, macro assets, and crypto in one place, then drill into a symbol for deeper analysis and demo trading.
-              </p>
-            </div>
-            <Link to="/dashboard" className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-cyan-500 hover:text-cyan-300">
-              Open Dashboard
-            </Link>
-          </div>
-
-          <div className="relative mt-6">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search Apple, Nvidia, Tesla, Bitcoin..."
-              className="w-full rounded-2xl border border-zinc-700 bg-zinc-900/85 pl-11 pr-4 py-4 text-sm text-zinc-100 outline-none transition focus:border-cyan-500"
-            />
-            {!!results.length && (
-              <div className="absolute left-0 right-0 top-full z-40 mt-3 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/95 shadow-2xl shadow-black/40">
-                {results.map((item) => (
-                  <Link key={item.symbol} to={`/markets/${item.symbol}`} className="flex items-center justify-between px-4 py-3 hover:bg-zinc-800/80">
-                    <div>
-                      <div className="font-mono text-cyan-400">{item.symbol}</div>
-                      <div className="text-xs text-zinc-500">{item.name}</div>
-                    </div>
-                    <div className="text-right font-mono text-xs">
-                      <div className="text-zinc-100">${formatPrice(quotes[item.symbol]?.price)}</div>
-                      <div className={(quotes[item.symbol]?.change ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                        {formatChange((quotes[item.symbol]?.changePct ?? 0) * 100)}%
-                      </div>
-                    </div>
-                  </Link>
-                ))}
+      {/* Header */}
+      <div className="page-hero">
+        <div className="hero-glow" />
+        <div style={{ position: 'relative', padding: '28px 32px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+              <div>
+                <div className="section-kicker" style={{ marginBottom: 8 }}>Market Overview</div>
+                <h1 style={{ fontSize: 28, fontWeight: 300, margin: 0, letterSpacing: '-0.02em', color: 'var(--text-primary)' }}>Global Markets</h1>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 14, margin: '8px 0 0' }}>
+                  Equities, indices, and digital assets — updated live.
+                </p>
               </div>
-            )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span className="live-dot" />
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>Auto-refresh 15s</span>
+              </div>
+            </div>
+
+            {/* Search */}
+            <div style={{ position: 'relative', maxWidth: 560 }}>
+              <svg style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}
+                width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                value={query} onChange={e => setQuery(e.target.value)}
+                placeholder="Search Apple, Nvidia, Bitcoin…"
+                className="input"
+                style={{ paddingLeft: 42, paddingTop: 12, paddingBottom: 12, fontSize: 14 }}
+              />
+              {results.length > 0 && query && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                  marginTop: 6,
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-default)',
+                  borderRadius: 12,
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
+                  overflow: 'hidden',
+                }}>
+                  {results.map((item, i) => {
+                    const q = quotes[item.symbol];
+                    const pos = (q?.change ?? 0) >= 0;
+                    return (
+                      <Link key={item.symbol} to={`/markets/${item.symbol}`}
+                        onClick={() => { setQuery(''); setResults([]); }}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '10px 16px', textDecoration: 'none',
+                          borderBottom: i < results.length - 1 ? '1px solid var(--border-subtle)' : 'none',
+                          transition: 'background 0.1s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                      >
+                        <div style={{ display: 'flex', gap: 10 }}>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 600, color: 'var(--accent-cyan)', minWidth: 52 }}>{item.symbol}</span>
+                          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{item.name}</span>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: 'var(--text-primary)' }}>${fmt(q?.price)}</div>
+                          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: pos ? 'var(--accent-green)' : 'var(--accent-red)' }}>{changeFmt((q?.changePct ?? 0) * 100)}%</div>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
+      </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-[24px] border border-zinc-800/80 bg-zinc-900/55 p-4">
-            <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Trending tickers</div>
-            <div className="mt-4 space-y-3">
-              {trending.map((item) => (
-                <Link key={item.symbol} to={`/markets/${item.symbol}`} className="flex items-center justify-between rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-3 py-3 hover:border-cyan-500/30">
-                  <div>
-                    <div className="font-mono text-cyan-400">{item.symbol}</div>
-                    <div className="text-[11px] text-zinc-500">${formatPrice(item.price)}</div>
-                  </div>
-                  <div className={`font-mono text-xs ${(item.change ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {formatChange((item.changePct ?? 0) * 100)}%
-                  </div>
-                </Link>
-              ))}
-            </div>
+      {/* Featured */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div className="section-kicker">Featured</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+          {FEATURED.map(sym => <FeaturedCard key={sym} symbol={sym} quote={quotes[sym]} loading={loadingQuotes} />)}
+        </div>
+      </div>
+
+      {/* Tabs + Main grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 16, alignItems: 'start' }}>
+
+        {/* Tables */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+          {/* Tab bar */}
+          <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border-subtle)', paddingBottom: 0 }}>
+            {TABS.map(tab => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                style={{
+                  padding: '8px 16px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 13, fontWeight: activeTab === tab.id ? 500 : 400,
+                  color: activeTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  borderBottom: `2px solid ${activeTab === tab.id ? 'var(--accent-cyan)' : 'transparent'}`,
+                  marginBottom: -1, transition: 'all 0.15s',
+                }}
+              >{tab.label}</button>
+            ))}
           </div>
 
-          <div className="rounded-[24px] border border-zinc-800/80 bg-zinc-900/55 p-4">
-            <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">How to use</div>
-            <div className="mt-4 space-y-3 text-sm text-zinc-400">
-              <div className="rounded-xl border border-zinc-800/70 bg-zinc-950/40 p-3">1. Search a company or ticker.</div>
-              <div className="rounded-xl border border-zinc-800/70 bg-zinc-950/40 p-3">2. Open its market page for chart, signals, and demo trade tools.</div>
-              <div className="rounded-xl border border-zinc-800/70 bg-zinc-950/40 p-3">3. Use Dashboard and Portfolio to monitor your simulated performance.</div>
-            </div>
-          </div>
-        </aside>
-      </section>
+          {activeGroups.flatMap(g => g.groups).map(group => (
+            <SectionTable key={group.title} title={group.title} symbols={group.symbols} quotes={quotes} loading={loadingQuotes} />
+          ))}
+        </div>
 
-      <section className="space-y-8">
-        {MARKET_GROUPS.map((section) => (
-          <div key={section.id} className="space-y-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">{section.title}</div>
-              <h2 className="mt-2 text-2xl font-light text-zinc-100">{section.title}</h2>
-            </div>
+        {/* Sidebar */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-            <div className="grid gap-4 xl:grid-cols-3">
-              {section.groups.map((group) => {
-                const items = group.symbols.map((symbol) => searchMarkets(symbol)[0] || { symbol, name: symbol }).filter(Boolean);
-                return <SectionTable key={group.title} title={group.title} items={items} quotes={quotes} />;
+          {/* Trending */}
+          <div className="panel" style={{ padding: 20 }}>
+            <div className="panel-title"><span>Most Active</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {trending.map(item => {
+                const pos = (item.change ?? 0) >= 0;
+                return (
+                  <Link key={item.symbol} to={`/markets/${item.symbol}`}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 8, textDecoration: 'none', transition: 'all 0.12s' }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--border-default)'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-subtle)'}
+                  >
+                    <div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 600, color: 'var(--accent-cyan)' }}>{item.symbol}</div>
+                      <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)', marginTop: 1 }}>${fmt(item.price)}</div>
+                    </div>
+                    <span style={{ fontSize: 12, fontFamily: 'var(--font-mono)', color: pos ? 'var(--accent-green)' : 'var(--accent-red)', fontWeight: 600 }}>
+                      {changeFmt((item.changePct ?? 0) * 100)}%
+                    </span>
+                  </Link>
+                );
               })}
             </div>
           </div>
-        ))}
-      </section>
+
+          {/* How to use */}
+          <div className="panel" style={{ padding: 20 }}>
+            <div className="panel-title"><span>How to Use</span></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                '1. Search or browse to find a symbol.',
+                '2. Open the market page for chart & signals.',
+                '3. Place a paper trade to practice.',
+                '4. Monitor performance in Portfolio.',
+              ].map((step, i) => (
+                <div key={i} style={{ fontSize: 12, color: 'var(--text-muted)', padding: '8px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}>
+                  {step}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
