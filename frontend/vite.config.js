@@ -22,14 +22,5 @@ export default defineConfig({
   },
   build: {
     sourcemap: true,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          react: ['react', 'react-dom'],
-          router: ['react-router-dom'],
-          charts: ['lightweight-charts', 'recharts'],
-        },
-      },
-    },
   },
 })
