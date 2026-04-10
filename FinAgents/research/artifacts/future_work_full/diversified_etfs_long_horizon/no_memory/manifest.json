@@ -1,0 +1,25 @@
+{
+  "scenario": "diversified_etfs_long_horizon",
+  "variant": "no_memory",
+  "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\diversified_etfs_long_horizon\\no_memory",
+  "total_return_pct": 0.001594208086541854,
+  "final_portfolio_value": 1001594.2080865419,
+  "sharpe_ratio": -263.7645178127493,
+  "max_drawdown": 2.4883375287679034e-05,
+  "num_decisions": 1076,
+  "num_snapshots": 52,
+  "config": {
+    "symbols": [
+      "SPY",
+      "QQQ",
+      "IWM",
+      "VTI",
+      "VXUS"
+    ],
+    "horizon_steps": 252,
+    "gating_enabled": true,
+    "memory_enabled": false,
+    "messaging_enabled": true,
+    "broader_signals_enabled": true
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "research_risk": {
+    "total_pnl": 0.0,
+    "num_trades": 1069,
+    "win_rate": 0.0,
+    "avg_pnl_per_trade": 0.0,
+    "contribution_pct": 0.0
+  },
+  "research_trader": {
+    "total_pnl": 185.18689509304923,
+    "num_trades": 1047,
+    "win_rate": 0.1556829035339064,
+    "avg_pnl_per_trade": 0.17687382530377194,
+    "contribution_pct": 0.7656229092862503
+  },
+  "research_analyst": {
+    "total_pnl": 56.69052634629767,
+    "num_trades": 83,
+    "win_rate": 0.13253012048192772,
+    "avg_pnl_per_trade": 0.6830183897144299,
+    "contribution_pct": 0.23437709071374968
+  }
+}

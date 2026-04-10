@@ -1,0 +1,35 @@
+{
+  "symbols": [
+    "IBIT",
+    "FBTC",
+    "GBTC"
+  ],
+  "initial_prices": {
+    "IBIT": 57.0,
+    "FBTC": 57.0,
+    "GBTC": 57.0
+  },
+  "num_steps": 252,
+  "initial_capital": 1000000.0,
+  "use_coordinator": true,
+  "enable_events": true,
+  "random_seed": 42,
+  "market_config": {
+    "forced_regime": "HIGH_VOLATILITY"
+  },
+  "event_config": {},
+  "agent_config": {},
+  "multimodal_config": {},
+  "include_multimodal_agent": true,
+  "include_analyst_agent": true,
+  "include_risk_manager": true,
+  "include_portfolio_manager": true,
+  "gating_enabled": true,
+  "memory_enabled": true,
+  "messaging_enabled": false,
+  "broader_signals_enabled": true,
+  "planner_adaptation_enabled": true,
+  "replication_artifact_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\no_messaging",
+  "context_provider": "BroaderSignalContextProvider",
+  "post_step_callback": "on_step_end"
+}

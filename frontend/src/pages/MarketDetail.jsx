@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, BROKERS } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -6,51 +6,20 @@ import { useSignalStream } from '../hooks/useSignalStream';
 import { WS_STATUS } from '../services/websocket';
 import CandlestickChart from '../components/CandlestickChart';
 import TradingViewChart from '../components/TradingViewChart';
-import ChartingFeaturesPanel from '../components/ChartingFeaturesPanel';
+import { safeArray } from '../utils/safeApi';
+import { formatPrice, formatBigNumbers } from '../utils/format';
+import { useBinanceLive } from '../hooks/useBinanceLive';
 
-function ChartTypeSelector() {
-  const [chartType, setChartType] = useState(() => localStorage.getItem('chartType') || 'tradingview');
-  
-  useEffect(() => {
-    localStorage.setItem('chartType', chartType);
-    // Dispatch custom event to notify chart change
-    window.dispatchEvent(new CustomEvent('chartTypeChange', { detail: { chartType } }));
-  }, [chartType]);
-
-  return (
-    <div className="flex items-center justify-between px-2 mb-2">
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => setChartType('tradingview')}
-          className={`text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded border transition-all ${
-            chartType === 'tradingview'
-              ? 'border-blue-600 text-blue-400 bg-blue-600/10'
-              : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          📊 TradingView Pro
-        </button>
-        <button
-          onClick={() => setChartType('legacy')}
-          className={`text-[10px] font-mono uppercase tracking-wider px-3 py-1.5 rounded border transition-all ${
-            chartType === 'legacy'
-              ? 'border-zinc-600 text-zinc-300 bg-zinc-800'
-              : 'border-zinc-700 text-zinc-500 hover:text-zinc-300'
-          }`}
-        >
-          🕯️ Simple Candles
-        </button>
-      </div>
-      
-      {chartType === 'tradingview' && (
-        <div className="text-[10px] font-mono text-emerald-400 flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-          Professional Charting Active
-        </div>
-      )}
-    </div>
-  );
-}
+/* ─── helpers ────────────────────────────────────────────── */
+const fmt = (v, decimals = 2) => (v == null ? '—' : Number(v).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals }));
+const fmtVol = (v) => {
+  if (v == null) return '—';
+  const n = Number(v);
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
+  return String(n);
+};
 
 function SignalBadge({ signal }) {
   if (!signal) return null;
@@ -58,39 +27,11 @@ function SignalBadge({ signal }) {
   return <span className={cls[signal] || 'badge-hold'}>{signal}</span>;
 }
 
-function StatRow({ label, value }) {
+function StatRow({ label, value, valueColor }) {
   return (
-    <div className="flex items-center justify-between border-b border-zinc-800/80 py-3 text-sm last:border-0">
-      <span className="section-kicker">{label}</span>
-      <span className="font-mono text-zinc-200">{value ?? '-'}</span>
-    </div>
-  );
-}
-
-function BrokerRedirect() {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <div className="space-y-3">
-      <button type="button" onClick={() => setOpen((value) => !value)} className="btn-ghost w-full">
-        Trade with Real Broker
-      </button>
-      {open ? (
-        <div className="space-y-2">
-          {BROKERS.map((broker) => (
-            <a
-              key={broker.name}
-              href={broker.url}
-              target="_blank"
-              rel="noreferrer"
-              className="block rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4 transition-all hover:border-zinc-700 hover:bg-zinc-900/70"
-            >
-              <div className="text-sm text-zinc-100">{broker.name}</div>
-              <div className="mt-1 text-sm text-zinc-500">{broker.description}</div>
-            </a>
-          ))}
-        </div>
-      ) : null}
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid rgba(0,183,255,0.06)' }}>
+      <span style={{ fontSize: 11, color: '#4d7a96', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.15em' }}>{label}</span>
+      <span style={{ fontSize: 13, fontFamily: 'JetBrains Mono, monospace', color: valueColor || '#e8f4ff', fontWeight: 500 }}>{value}</span>
     </div>
   );
 }
@@ -106,19 +47,12 @@ function DemoTradePanel({ symbol, currentPrice }) {
   const total = (Number(quantity) || 0) * (currentPrice || 0);
 
   const execute = async () => {
-    setLoading(true);
-    setError('');
-    setResult(null);
+    setLoading(true); setError(''); setResult(null);
     try {
-      const response = await api.executeDemoTrade({
-        symbol,
-        action,
-        quantity: Number(quantity),
-        price: currentPrice,
-      });
-      setResult(response);
+      const resp = await api.executeDemoTrade({ symbol, action, quantity: Number(quantity), price: currentPrice });
+      setResult(resp);
     } catch (err) {
-      setError(err?.message || 'Unable to place paper trade');
+      setError(err?.message || 'Unable to place trade');
     } finally {
       setLoading(false);
     }
@@ -126,61 +60,96 @@ function DemoTradePanel({ symbol, currentPrice }) {
 
   if (!isAuthenticated) {
     return (
-      <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-8 text-center">
-        <div className="text-sm text-zinc-500">Sign in to place practice trades on {symbol}.</div>
-        <Link to="/login" className="btn-primary mt-4 inline-flex">Sign In</Link>
+      <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+        <div style={{ fontSize: 13, color: '#4d7a96', marginBottom: 16 }}>Sign in to place demo trades on {symbol}</div>
+        <Link to="/login" className="btn-primary" style={{ textDecoration: 'none', display: 'inline-block' }}>Sign In</Link>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* BUY / SELL toggle */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         {['BUY', 'SELL'].map((side) => (
           <button
             key={side}
             type="button"
             onClick={() => setAction(side)}
-            className={`rounded-2xl border px-4 py-3 text-sm font-medium transition-all ${
-              action === side
+            style={{
+              padding: '10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              fontWeight: 700, fontSize: 13, letterSpacing: '0.08em', transition: 'all 0.2s',
+              background: action === side
                 ? side === 'BUY'
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400'
-                  : 'border-red-500/40 bg-red-500/10 text-red-400'
-                : 'border-zinc-800 bg-zinc-950/35 text-zinc-500 hover:border-zinc-700'
-            }`}
+                  ? 'linear-gradient(135deg, #004422, #007744)'
+                  : 'linear-gradient(135deg, #440011, #880022)'
+                : 'rgba(0,183,255,0.04)',
+              color: action === side
+                ? side === 'BUY' ? '#00e676' : '#ff3d57'
+                : '#4d7a96',
+              boxShadow: action === side && side === 'BUY' ? '0 2px 16px rgba(0,230,118,0.2)' :
+                         action === side && side === 'SELL' ? '0 2px 16px rgba(255,61,87,0.2)' : 'none',
+            }}
           >
             {side}
           </button>
         ))}
       </div>
 
-      <div className="space-y-3">
-        <div>
-          <label className="section-kicker mb-2 block">Quantity</label>
-          <input type="number" min="0.001" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="input" />
-        </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
-          <div className="section-kicker mb-2">Preview</div>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="text-zinc-500">Action</div>
-            <div className="text-right font-mono text-zinc-200">{action}</div>
-            <div className="text-zinc-500">Execution price</div>
-            <div className="text-right font-mono text-zinc-200">{currentPrice ? `$${currentPrice.toFixed(2)}` : '-'}</div>
-            <div className="text-zinc-500">Estimated total</div>
-            <div className="text-right font-mono text-zinc-200">${total.toFixed(2)}</div>
-          </div>
-        </div>
+      {/* Quantity */}
+      <div>
+        <div style={{ fontSize: 10, color: '#3d607a', textTransform: 'uppercase', letterSpacing: '0.25em', fontFamily: 'JetBrains Mono, monospace', marginBottom: 6 }}>Quantity</div>
+        <input
+          type="number" min="0.001" step="1" value={quantity}
+          onChange={(e) => setQuantity(e.target.value)}
+          className="input"
+          style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 16, fontWeight: 600 }}
+        />
       </div>
 
-      {error ? <div className="rounded-2xl border border-red-500/25 bg-red-500/8 px-4 py-3 text-sm text-red-300">{error}</div> : null}
-      {result ? (
-        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/8 px-4 py-3 text-sm text-emerald-300">
-          Practice trade executed. New balance: ${Number(result.new_balance || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}
-        </div>
-      ) : null}
+      {/* Order Preview */}
+      <div style={{
+        background: 'rgba(0,183,255,0.04)', border: '1px solid rgba(0,183,255,0.1)',
+        borderRadius: 8, padding: '12px 14px',
+      }}>
+        {[
+          { label: 'Side', value: action, color: action === 'BUY' ? '#00e676' : '#ff3d57' },
+          { label: 'Price', value: formatPrice(currentPrice, symbol) },
+          { label: 'Est. Total', value: total > 0 ? formatPrice(total, symbol) : '—' },
+        ].map(({ label, value, color }) => (
+          <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+            <span style={{ fontSize: 11, color: '#4d7a96' }}>{label}</span>
+            <span style={{ fontSize: 13, fontFamily: 'JetBrains Mono, monospace', color: color || '#e8f4ff', fontWeight: 600 }}>{value}</span>
+          </div>
+        ))}
+      </div>
 
-      <button type="button" onClick={execute} disabled={loading || !currentPrice || !Number(quantity)} className="btn-primary w-full disabled:opacity-40">
-        {loading ? 'Executing...' : `Place ${action} Practice Trade`}
+      {error && (
+        <div style={{ background: 'rgba(255,61,87,0.08)', border: '1px solid rgba(255,61,87,0.2)', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#ff3d57' }}>
+          ⚠ {error}
+        </div>
+      )}
+      {result && (
+        <div style={{ background: 'rgba(0,230,118,0.08)', border: '1px solid rgba(0,230,118,0.2)', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#00e676' }}>
+          ✓ Order filled · Balance: {formatPrice(result.new_balance, symbol)}
+        </div>
+      )}
+
+      <button
+        type="button" onClick={execute}
+        disabled={loading || !currentPrice || !Number(quantity)}
+        style={{
+          padding: '12px', borderRadius: 8, border: 'none', cursor: 'pointer',
+          fontWeight: 700, fontSize: 14, letterSpacing: '0.06em', transition: 'all 0.2s',
+          background: action === 'BUY'
+            ? 'linear-gradient(135deg, #006633, #009950)'
+            : 'linear-gradient(135deg, #660022, #990033)',
+          color: action === 'BUY' ? '#00e676' : '#ff3d57',
+          boxShadow: action === 'BUY' ? '0 4px 20px rgba(0,230,118,0.2)' : '0 4px 20px rgba(255,61,87,0.2)',
+          opacity: (loading || !currentPrice || !Number(quantity)) ? 0.4 : 1,
+        }}
+      >
+        {loading ? 'Executing...' : `${action} ${quantity || '0'} ${symbol}`}
       </button>
     </div>
   );
@@ -191,231 +160,370 @@ export default function MarketDetail() {
   const activeSymbol = (symbol || 'AAPL').toUpperCase();
   const [priceData, setPriceData] = useState(null);
   const [info, setInfo] = useState(null);
+  const [technicals, setTechnicals] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Default to simple candles — loads instantly. User can switch to TradingView Pro.
+  const [chartType, setChartType] = useState(() => localStorage.getItem('chartType') || 'simple');
   const { messages, status } = useSignalStream(activeSymbol, 20);
+  
+  // High-performance Binance WebSocket Engine hook
+  const { trade, kline } = useBinanceLive(activeSymbol);
 
-  const [chartType, setChartType] = useState(() => localStorage.getItem('chartType') || 'tradingview');
+  const loadQuoteRef = useRef(null);
+  const loadPrice = useCallback(async () => {
+    const payload = await api.getMarketPrice(activeSymbol).catch(() => null);
+    if (payload) setPriceData(payload?.data || payload);
+    setLoading(false);
+  }, [activeSymbol]);
 
-  const loadQuote = useCallback(async () => {
-    setLoading(true);
-    try {
-      const payload = await api.getMarketPrice(activeSymbol);
-      setPriceData(payload?.data || payload);
-    } catch {
-      setPriceData(null);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => { loadQuoteRef.current = loadPrice; }, [loadPrice]);
+
+  useEffect(() => {
+    setPriceData(null); setInfo(null); setLoading(true);
+    loadQuoteRef.current?.();
   }, [activeSymbol]);
 
   useEffect(() => {
-    setPriceData(null);
-    setInfo(null);
-    loadQuote();
-    const timer = window.setInterval(loadQuote, 7000);
-    return () => window.clearInterval(timer);
-  }, [loadQuote]);
-
-  useEffect(() => {
-    api.getSymbolInfo(activeSymbol).then((payload) => setInfo(payload?.data || payload)).catch(() => setInfo(null));
+    api.getSymbolInfo(activeSymbol).then((p) => setInfo(p?.data || p)).catch(() => {});
+    // Load technicals (real RSI/SMA data)
+    api.getTechnicals(activeSymbol).then((p) => setTechnicals(p?.data || p)).catch(() => {});
   }, [activeSymbol]);
 
-  // Listen for chart type changes
   useEffect(() => {
-    const handleChartChange = (e) => {
-      setChartType(e.detail.chartType);
-    };
-    window.addEventListener('chartTypeChange', handleChartChange);
-    return () => window.removeEventListener('chartTypeChange', handleChartChange);
+    const h = (e) => setChartType(e.detail.chartType);
+    window.addEventListener('chartTypeChange', h);
+    return () => window.removeEventListener('chartTypeChange', h);
   }, []);
 
-  const price = priceData?.price;
-  const change = priceData?.change;
-  const changePct = priceData?.change_pct;
+  // Merge live trade ticks over REST baseline
+  const price = trade ? trade.price : priceData?.price;
+  let change = priceData?.change;
+  let changePct = priceData?.change_pct;
+  
+  if (trade && priceData?.prev_close) {
+      change = trade.price - priceData.prev_close;
+      changePct = change / priceData.prev_close;
+  }
+
   const positive = (change ?? 0) >= 0;
   const latestSignal = messages[0];
 
-  const summaryStats = useMemo(
-    () => [
-      { label: 'Open', value: priceData?.open != null ? `$${Number(priceData.open).toFixed(2)}` : '-' },
-      { label: 'Day high', value: priceData?.high != null ? `$${Number(priceData.high).toFixed(2)}` : '-' },
-      { label: 'Day low', value: priceData?.low != null ? `$${Number(priceData.low).toFixed(2)}` : '-' },
-      { label: 'Volume', value: priceData?.volume != null ? `${(Number(priceData.volume) / 1e6).toFixed(1)}M` : '-' },
-    ],
-    [priceData],
-  );
-
   return (
-    <div className="space-y-6">
-      <section className="page-hero">
-        <div className="hero-glow" />
-        <div className="relative grid gap-6 px-6 py-6 lg:grid-cols-[1.15fr_0.85fr] lg:px-8">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <div style={{
+        background: 'rgba(10, 21, 32, 0.8)',
+        border: '1px solid rgba(0,183,255,0.12)',
+        borderRadius: 14,
+        padding: '18px 24px',
+        display: 'grid',
+        gridTemplateColumns: '1fr auto',
+        gap: 24,
+        alignItems: 'center',
+        boxShadow: '0 4px 30px rgba(0,0,0,0.4), inset 0 1px 0 rgba(0,212,255,0.06)',
+      }}>
+        {/* Left: Symbol + Price */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', gap: 24 }}>
           <div>
-            <div className="section-kicker mb-3">Market detail</div>
-            <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-3xl font-light tracking-tight text-zinc-100 sm:text-4xl">{activeSymbol}</h1>
-              {latestSignal?.signal ? <SignalBadge signal={latestSignal.signal} /> : null}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+              <h1 style={{ font: '700 32px/1 "JetBrains Mono", monospace', color: '#e8f4ff', margin: 0, letterSpacing: '-0.02em' }}>
+                {activeSymbol}
+              </h1>
+              {latestSignal?.signal && <SignalBadge signal={latestSignal.signal} />}
             </div>
-            <p className="mt-2 text-sm text-zinc-500">{info?.name || 'Live market view with charting, signals, and paper trading.'}</p>
-            <div className="mt-5 flex flex-wrap items-end gap-4">
-              <div>
-                {loading && !priceData ? (
-                  <div className="skeleton h-10 w-36" />
-                ) : (
-                  <div className="text-4xl font-light font-mono text-zinc-100">{price != null ? `$${Number(price).toFixed(2)}` : '-'}</div>
-                )}
-                <div className={`mt-1 text-sm font-mono ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {change != null ? `${positive ? '+' : ''}${Number(change).toFixed(2)} (${positive ? '+' : ''}${((changePct || 0) * 100).toFixed(2)}%)` : 'Waiting for quote'}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {summaryStats.map((stat) => (
-                  <div key={stat.label} className="rounded-2xl border border-zinc-800/80 bg-zinc-950/45 px-4 py-3">
-                    <div className="section-kicker mb-1">{stat.label}</div>
-                    <div className="font-mono text-zinc-100">{stat.value}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <div style={{ fontSize: 12, color: '#4d7a96' }}>{info?.name || '—'}</div>
           </div>
 
-          <div className="rounded-[26px] border border-zinc-800/80 bg-zinc-950/45 p-5">
-            <div className="panel-title">
-              <span>Signal snapshot</span>
-              <span className={`text-[10px] font-mono ${status === WS_STATUS.CONNECTED ? 'text-emerald-400' : 'text-zinc-600'}`}>
-                {status === WS_STATUS.CONNECTED ? 'live stream' : 'reconnecting'}
+          <div>
+            {loading && !priceData ? (
+              <div className="skeleton" style={{ width: 140, height: 44 }} />
+            ) : (
+              <>
+                <div style={{
+                  font: `700 40px/1 "JetBrains Mono", monospace`,
+                  color: positive ? '#00e676' : '#ff3d57',
+                  letterSpacing: '-0.03em',
+                  textShadow: positive ? '0 0 20px rgba(0,230,118,0.3)' : '0 0 20px rgba(255,61,87,0.3)',
+                }}>
+                  {formatPrice(price, activeSymbol)}
+                </div>
+                <div style={{ font: '500 13px "JetBrains Mono", monospace', color: positive ? '#00e676' : '#ff3d57', marginTop: 4 }}>
+                  {change != null
+                    ? `${positive ? '+' : ''}${fmt(change, 2)} (${positive ? '+' : ''}${((changePct ?? 0) * 100).toFixed(2)}%)`
+                    : 'Loading quote...'}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* OHLV stats */}
+          {priceData && (
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {[
+                { label: 'OPEN',   value: formatPrice(priceData.open, activeSymbol) },
+                { label: 'HIGH',   value: formatPrice(priceData.high, activeSymbol) },
+                { label: 'LOW',    value: formatPrice(priceData.low, activeSymbol) },
+                { label: 'VOL',    value: fmtVol(priceData.volume) },
+              ].map(({ label, value }) => (
+                <div key={label} style={{
+                  background: 'rgba(0,183,255,0.04)', border: '1px solid rgba(0,183,255,0.1)',
+                  borderRadius: 8, padding: '6px 12px', textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: 9, color: '#3d607a', letterSpacing: '0.2em', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase' }}>{label}</div>
+                  <div style={{ fontSize: 14, fontFamily: 'JetBrains Mono, monospace', color: '#e8f4ff', fontWeight: 600, marginTop: 3 }}>{value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Right: Signal snapshot */}
+        <div style={{
+          minWidth: 260, background: 'rgba(0,183,255,0.04)',
+          border: '1px solid rgba(0,183,255,0.12)', borderRadius: 10, padding: '14px 16px',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+            <span style={{ fontSize: 9, color: '#3d607a', textTransform: 'uppercase', letterSpacing: '0.25em', fontFamily: 'JetBrains Mono, monospace' }}>Signal Snapshot</span>
+            <span style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', color: status === WS_STATUS.CONNECTED ? '#00e676' : '#3d607a' }}>
+              {status === WS_STATUS.CONNECTED ? '● LIVE' : '○ RECONNECTING'}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: '#4d7a96', marginBottom: 8 }}>Latest agent action</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            {latestSignal?.signal ? <SignalBadge signal={latestSignal.signal} /> : <span style={{ fontSize: 12, color: '#3d607a' }}>No signal yet</span>}
+          </div>
+          <div style={{ fontSize: 12, color: '#4d7a96', lineHeight: 1.6, marginBottom: 12 }}>
+            {latestSignal?.explanation || 'Waiting for signal engine...'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+            <Link to="/dashboard" className="btn-primary" style={{ textDecoration: 'none', textAlign: 'center', padding: '7px', fontSize: 12 }}>Dashboard</Link>
+            <Link to="/agents" className="btn-ghost" style={{ textDecoration: 'none', textAlign: 'center' }}>Agents</Link>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Main 2-col grid ───────────────────────────────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
+
+        {/* Left: Chart + signals + stats */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+
+          {/* Chart type selector */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[['tradingview', '📊 TradingView Pro'], ['legacy', '🕯 Simple Candles']].map(([type, label]) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => { setChartType(type); localStorage.setItem('chartType', type); }}
+                  style={{
+                    padding: '6px 14px', borderRadius: 6, fontSize: 11,
+                    fontFamily: 'JetBrains Mono, monospace', cursor: 'pointer', transition: 'all 0.2s',
+                    letterSpacing: '0.05em', border: '1px solid',
+                    ...(chartType === type
+                      ? { background: 'rgba(0,212,255,0.1)', borderColor: 'rgba(0,212,255,0.3)', color: '#00d4ff' }
+                      : { background: 'transparent', borderColor: 'rgba(0,183,255,0.1)', color: '#3d607a' }),
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {chartType === 'tradingview' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#00e676', fontFamily: 'JetBrains Mono, monospace' }}>
+                <span className="live-dot" />
+                Professional Charting Active
+              </div>
+            )}
+          </div>
+
+          {/* Chart panel */}
+          <div className="panel" style={{ padding: '14px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span style={{ fontSize: 10, color: '#3d607a', textTransform: 'uppercase', letterSpacing: '0.25em', fontFamily: 'JetBrains Mono, monospace' }}>PRICE CHART · {activeSymbol}</span>
+              <span style={{ fontSize: 10, color: '#3d607a', fontFamily: 'JetBrains Mono, monospace' }}>
+                {chartType === 'tradingview' ? 'ADVANCED TECHNICAL ANALYSIS' : 'SIMPLE CANDLESTICK'}
               </span>
             </div>
-            <div className="space-y-3">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/55 px-4 py-4">
-                <div className="section-kicker mb-2">Latest agent action</div>
-                <div className="flex items-center gap-2">
-                  {latestSignal?.signal ? <SignalBadge signal={latestSignal.signal} /> : <span className="text-sm text-zinc-500">No active signal</span>}
+            {chartType === 'tradingview'
+              ? <TradingViewChart symbol={activeSymbol} height={520} theme="dark" interval="D" />
+              : <CandlestickChart symbol={activeSymbol} height={400} liveKline={kline} />
+            }
+          </div>
+
+          {/* Stats + signal feed */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+            {/* Fundamentals */}
+            <div className="panel" style={{ padding: '16px 18px' }}>
+              <div className="panel-title">Company & Market Stats</div>
+              {[
+                { label: 'Sector',      value: info?.sector || '—' },
+                { label: 'Industry',    value: info?.industry || '—' },
+                { label: 'Market Cap',  value: formatBigNumbers(info?.market_cap, activeSymbol) },
+                { label: 'P/E Ratio',   value: info?.pe_ratio ? fmt(info.pe_ratio, 2) : '—' },
+                { label: 'EPS',         value: info?.eps ? formatPrice(info.eps, activeSymbol) : '—' },
+                { label: '52W High',    value: formatPrice(info?.['52w_high'], activeSymbol), valueColor: '#00e676' },
+                { label: '52W Low',     value: formatPrice(info?.['52w_low'], activeSymbol),  valueColor: '#ff3d57' },
+                { label: 'Avg Volume',  value: fmtVol(info?.avg_volume) },
+              ].map((r) => <StatRow key={r.label} {...r} />)}
+              {info?.description && (
+                <div style={{ marginTop: 12, fontSize: 11, color: '#4d7a96', lineHeight: 1.7, padding: '10px', background: 'rgba(0,183,255,0.03)', borderRadius: 6 }}>
+                  {info.description}
                 </div>
-                <div className="mt-3 text-sm text-zinc-400">{latestSignal?.explanation || 'The signal engine will explain the latest setup here when a new event arrives.'}</div>
+              )}
+            </div>
+
+            {/* Live signal feed */}
+            <div className="panel" style={{ padding: '16px 18px' }}>
+              <div className="panel-title">
+                <span>Live Signal Feed</span>
+                {status === WS_STATUS.CONNECTED && <span className="live-dot" />}
               </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Link to="/dashboard" className="btn-primary text-center">Open dashboard</Link>
-                <Link to="/agents" className="btn-ghost text-center">Review agents</Link>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 340, overflowY: 'auto' }}>
+                {safeArray(messages).length ? safeArray(messages).map((msg, i) => (
+                  <div key={i} style={{
+                    background: 'rgba(0,183,255,0.03)', border: '1px solid rgba(0,183,255,0.08)',
+                    borderRadius: 8, padding: '10px 12px',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 10, color: '#3d607a', fontFamily: 'JetBrains Mono, monospace' }}>
+                        {new Date(msg._ts).toLocaleTimeString('en-US', { hour12: false })}
+                      </span>
+                      {msg.signal && <SignalBadge signal={msg.signal} />}
+                      {msg.confidence != null && (
+                        <span style={{ marginLeft: 'auto', fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#4d7a96' }}>
+                          {(msg.confidence * 100).toFixed(0)}% conf.
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#7a9ab5', lineHeight: 1.6 }}>
+                      {msg.explanation || 'Agent update received.'}
+                    </div>
+                  </div>
+                )) : (
+                  <div style={{ textAlign: 'center', padding: '2rem', fontSize: 12, color: '#3d607a' }}>
+                    Connecting signal stream for {activeSymbol}...
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
-      </section>
 
-      <div className="grid gap-5 2xl:grid-cols-[1.45fr_0.55fr]">
-        <section className="space-y-5">
-          {/* Chart Type Selector */}
-          <ChartTypeSelector />
+        {/* Right sidebar */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-          <section className="panel p-5">
+          {/* Demo Trade */}
+          <div className="panel" style={{ padding: '16px 18px' }}>
             <div className="panel-title">
-              <span>Price Chart</span>
-              <span className="text-[10px] font-mono text-zinc-600">
-                {chartType === 'tradingview' ? 'Advanced Technical Analysis' : 'Simple Candlestick'}
-              </span>
+              <span>Demo Trade</span>
+              <span style={{ fontSize: 9, color: '#3d607a', fontFamily: 'JetBrains Mono, monospace' }}>PAPER ONLY</span>
             </div>
-            
-            {chartType === 'tradingview' ? (
-              <TradingViewChart symbol={activeSymbol} height={600} theme="dark" interval="D" />
-            ) : (
-              <CandlestickChart symbol={activeSymbol} height={400} />
-            )}
-          </section>
-
-          <section className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-            <div className="panel p-5">
-              <div className="panel-title"><span>Company and Market Stats</span></div>
-              <div className="grid gap-x-8 md:grid-cols-2">
-                <div>
-                  <StatRow label="Sector" value={info?.sector} />
-                  <StatRow label="Industry" value={info?.industry} />
-                  <StatRow label="Market cap" value={info?.market_cap ? `$${(Number(info.market_cap) / 1e9).toFixed(1)}B` : '-'} />
-                  <StatRow label="P/E ratio" value={info?.pe_ratio != null ? Number(info.pe_ratio).toFixed(2) : '-'} />
-                </div>
-                <div>
-                  <StatRow label="EPS" value={info?.eps != null ? Number(info.eps).toFixed(2) : '-'} />
-                  <StatRow label="52 week high" value={info?.['52w_high'] != null ? `$${Number(info['52w_high']).toFixed(2)}` : '-'} />
-                  <StatRow label="52 week low" value={info?.['52w_low'] != null ? `$${Number(info['52w_low']).toFixed(2)}` : '-'} />
-                  <StatRow label="Average volume" value={info?.avg_volume ? `${(Number(info.avg_volume) / 1e6).toFixed(1)}M` : '-'} />
-                </div>
-              </div>
-              <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/35 px-4 py-4 text-sm leading-7 text-zinc-500">
-                {info?.description || 'Description and richer fundamentals will appear here as more metadata becomes available.'}
-              </div>
-            </div>
-
-            <div className="panel p-5">
-              <div className="panel-title"><span>Live Signal Feed</span></div>
-              <div className="space-y-3 max-h-[24rem] overflow-y-auto">
-                {messages.length ? (
-                  messages.map((message, index) => (
-                    <div key={`${message._ts}-${index}`} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-mono text-zinc-600">
-                          {new Date(message._ts).toLocaleTimeString('en-US', { hour12: false })}
-                        </span>
-                        {message.signal ? <SignalBadge signal={message.signal} /> : null}
-                        {message.confidence != null ? <span className="ml-auto text-[11px] font-mono text-zinc-500">{(message.confidence * 100).toFixed(0)}%</span> : null}
-                      </div>
-                      <div className="mt-3 text-sm text-zinc-400">{message.explanation || 'Agent update received for this symbol.'}</div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-8 text-center text-sm text-zinc-500">
-                    Waiting for live signals on {activeSymbol}.
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
-        </section>
-
-        <aside className="space-y-5">
-          <section className="panel p-5">
-            <div className="panel-title"><span>Demo Trade</span></div>
             <DemoTradePanel symbol={activeSymbol} currentPrice={price} />
-          </section>
+          </div>
 
-          <section className="panel p-5">
-            <div className="panel-title"><span>Real Broker Redirect</span></div>
-            <BrokerRedirect />
-          </section>
+          {/* Technical view — REAL RSI/SMA data */}
+          <div className="panel" style={{ padding: '16px 18px' }}>
+            <div className="panel-title">Technical View
+              {technicals && <span style={{ marginLeft: 8, fontSize: 9, color: '#3d607a', fontFamily: 'JetBrains Mono,monospace' }}>RSI-14 · SMA</span>}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {technicals ? (
+                <>
+                  <StatRow label="Trend Bias"
+                    value={technicals.trend_bias || '—'}
+                    valueColor={
+                      technicals.trend_bias?.includes('Bullish') ? '#00e676' :
+                      technicals.trend_bias?.includes('Bearish') ? '#ff3d57' : '#7a9ab5'
+                    }
+                  />
+                  <StatRow label="Signal"
+                    value={technicals.signal_state || '—'}
+                    valueColor={
+                      technicals.signal_state === 'BUY' ? '#00e676' :
+                      technicals.signal_state === 'SELL' ? '#ff3d57' : '#7a9ab5'
+                    }
+                  />
+                  <StatRow label="RSI-14"
+                    value={technicals.rsi_14 != null ? technicals.rsi_14.toFixed(1) : '—'}
+                    valueColor={
+                      technicals.rsi_14 >= 65 ? '#ff3d57' :
+                      technicals.rsi_14 <= 35 ? '#00e676' : '#e8f4ff'
+                    }
+                  />
+                  <StatRow label="SMA-20"    value={technicals.sma_20 != null ? formatPrice(technicals.sma_20, activeSymbol) : '—'} />
+                  <StatRow label="SMA-50"    value={technicals.sma_50 != null ? formatPrice(technicals.sma_50, activeSymbol) : '—'} />
+                  <StatRow label="Support"   value={formatPrice(technicals.support, activeSymbol)}  valueColor="#00e676" />
+                  <StatRow label="Resistance" value={formatPrice(technicals.resistance, activeSymbol)} valueColor="#ff3d57" />
+                  <StatRow label="Volatility" value={technicals.volatility_pct != null ? `${technicals.volatility_pct}%` : '—'} />
+                </>
+              ) : (
+                // Fallback while loading — use today's price movement
+                <>
+                  <StatRow label="Trend Bias"   value={positive ? 'Day Bullish' : 'Day Bearish'} valueColor={positive ? '#00e676' : '#ff3d57'} />
+                  <StatRow label="Signal State" value={latestSignal?.signal || 'Waiting'} />
+                  <StatRow label="Session High" value={formatPrice(priceData?.high, activeSymbol)} valueColor="#00e676" />
+                  <StatRow label="Session Low"  value={formatPrice(priceData?.low, activeSymbol)}  valueColor="#ff3d57" />
+                  <StatRow label="Prev Close"   value={formatPrice(priceData?.prev_close, activeSymbol)} />
+                  <div style={{ fontSize: 10, color: '#3d607a', fontFamily: 'JetBrains Mono,monospace', marginTop: 8 }}>Loading RSI/SMA indicators...</div>
+                </>
+              )}
+            </div>
+          </div>
 
-          <section className="panel p-5">
-            <div className="panel-title"><span>Technical View</span></div>
-            <div className="space-y-3">
-              {[
-                { label: 'Trend bias', value: positive ? 'Positive' : 'Negative', tone: positive ? 'text-emerald-400' : 'text-red-400' },
-                { label: 'Signal state', value: latestSignal?.signal || 'Waiting', tone: 'text-zinc-100' },
-                { label: 'Session range', value: priceData?.high != null && priceData?.low != null ? `$${Number(priceData.low).toFixed(2)} - $${Number(priceData.high).toFixed(2)}` : '-' },
-              ].map((row) => (
-                <div key={row.label} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
-                  <div className="section-kicker mb-2">{row.label}</div>
-                  <div className={`text-lg font-light ${row.tone || 'text-zinc-100'}`}>{row.value}</div>
-                </div>
+          {/* Real broker redirect */}
+          <div className="panel" style={{ padding: '16px 18px' }}>
+            <div className="panel-title">Real Brokers</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {BROKERS.slice(0, 3).map((b) => (
+                <a
+                  key={b.name} href={b.url} target="_blank" rel="noreferrer"
+                  style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '9px 12px', borderRadius: 8,
+                    background: 'rgba(0,183,255,0.03)', border: '1px solid rgba(0,183,255,0.08)',
+                    textDecoration: 'none', transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,183,255,0.07)'; e.currentTarget.style.borderColor = 'rgba(0,183,255,0.2)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,183,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(0,183,255,0.08)'; }}
+                >
+                  <div>
+                    <div style={{ fontSize: 13, color: '#e8f4ff', fontWeight: 500 }}>{b.name}</div>
+                    <div style={{ fontSize: 10, color: '#4d7a96', marginTop: 1 }}>{b.description}</div>
+                  </div>
+                  <span style={{ fontSize: 12, color: '#00d4ff' }}>→</span>
+                </a>
               ))}
             </div>
-          </section>
+          </div>
 
-          <section className="panel p-5">
-            <div className="panel-title"><span>News Feed</span></div>
-            <div className="space-y-3">
+          {/* Learn links */}
+          <div className="panel" style={{ padding: '16px 18px' }}>
+            <div className="panel-title">Learning Hub</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {[
-                'Price action summary placeholder',
-                'Agent insight note placeholder',
-                'Macro context placeholder',
-              ].map((item) => (
-                <div key={item} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4 text-sm text-zinc-500">
-                  {item}
-                </div>
+                { label: 'Momentum Trading', to: '/learn' },
+                { label: 'Risk Management', to: '/learn' },
+                { label: 'Signal Interpretation', to: '/learn' },
+              ].map(({ label, to }) => (
+                <Link key={label} to={to} style={{
+                  padding: '8px 12px', borderRadius: 7,
+                  background: 'rgba(0,183,255,0.03)', border: '1px solid rgba(0,183,255,0.07)',
+                  textDecoration: 'none', fontSize: 12, color: '#7a9ab5',
+                  display: 'flex', justifyContent: 'space-between',
+                  transition: 'all 0.15s',
+                }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#00d4ff'; e.currentTarget.style.borderColor = 'rgba(0,212,255,0.2)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = '#7a9ab5'; e.currentTarget.style.borderColor = 'rgba(0,183,255,0.07)'; }}
+                >
+                  {label}
+                  <span>›</span>
+                </Link>
               ))}
             </div>
-          </section>
-
-          {/* TradingView Features Panel */}
-          <ChartingFeaturesPanel />
-        </aside>
+          </div>
+        </div>
       </div>
     </div>
   );

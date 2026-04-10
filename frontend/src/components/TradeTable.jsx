@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { formatPrice } from '../utils/format';
 
 function generateMockTrades() {
   const symbols  = ['AAPL', 'MSFT', 'GOOGL', 'TSLA', 'NVDA', 'META', 'AMZN'];
@@ -94,7 +95,7 @@ export default function TradeTable({ trades = MOCK_TRADES, maxRows = 15 }) {
                 <td className="py-1.5 pr-3 text-cyan-400">{t.symbol}</td>
                 <td className={`py-1.5 pr-3 font-semibold ${SIDE_STYLE[t.side] ?? 'text-zinc-400'}`}>{t.side}</td>
                 <td className="py-1.5 pr-3 text-right text-zinc-300 tabular-nums">{t.qty}</td>
-                <td className="py-1.5 pr-3 text-right text-zinc-300 tabular-nums">${t.price}</td>
+                <td className="py-1.5 pr-3 text-right text-zinc-300 tabular-nums">{formatPrice(t.price, t.symbol)}</td>
                 <td className="py-1.5 pr-3 text-zinc-500 hidden sm:table-cell">{t.agent}</td>
                 <td className={`py-1.5 pr-3 ${STATUS_STYLE[t.status] ?? 'text-zinc-400'}`}>{t.status}</td>
                 <td className="py-1.5 text-right text-zinc-600 tabular-nums">

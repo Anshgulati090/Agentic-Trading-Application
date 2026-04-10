@@ -5,6 +5,7 @@ Ultra-low latency for hot data with Redis fallback.
 
 from typing import Any, Optional
 import time
+import threading
 from functools import lru_cache
 
 from backend.cache.redis_client import RedisClient
@@ -16,43 +17,48 @@ class MemoryCache:
     def __init__(self, max_size: int = 1024):
         self._cache = {}
         self._max_size = max_size
+        self._lock = threading.Lock()
     
     def get(self, key: str) -> Optional[Any]:
         """Get value if exists and not expired"""
-        if key not in self._cache:
-            return None
-        
-        value, expires_at = self._cache[key]
-        if expires_at and time.time() > expires_at:
-            del self._cache[key]
-            return None
-        
-        return value
+        with self._lock:
+            if key not in self._cache:
+                return None
+            
+            value, expires_at = self._cache[key]
+            if expires_at and time.time() > expires_at:
+                del self._cache[key]
+                return None
+            
+            return value
     
     def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None) -> bool:
         """Set value with optional TTL"""
-        # Evict oldest if at capacity
-        if len(self._cache) >= self._max_size:
-            oldest_key = next(iter(self._cache))
-            del self._cache[oldest_key]
-        
-        expires_at = None
-        if ttl_seconds is not None:
-            expires_at = time.time() + ttl_seconds
-        
-        self._cache[key] = (value, expires_at)
-        return True
+        with self._lock:
+            # Evict oldest if at capacity
+            if len(self._cache) >= self._max_size:
+                oldest_key = next(iter(self._cache))
+                del self._cache[oldest_key]
+            
+            expires_at = None
+            if ttl_seconds is not None:
+                expires_at = time.time() + ttl_seconds
+            
+            self._cache[key] = (value, expires_at)
+            return True
     
     def delete(self, key: str) -> bool:
         """Delete key"""
-        if key in self._cache:
-            del self._cache[key]
-            return True
-        return False
+        with self._lock:
+            if key in self._cache:
+                del self._cache[key]
+                return True
+            return False
     
     def clear(self):
         """Clear all cached data"""
-        self._cache.clear()
+        with self._lock:
+            self._cache.clear()
 
 
 class CacheService:

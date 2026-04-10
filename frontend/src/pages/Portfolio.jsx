@@ -24,8 +24,10 @@ export default function Portfolio() {
   const navigate = useNavigate();
   const fetchAccount = useCallback(() => (isAuthenticated ? api.getDemoAccount() : api.getPortfolioMetrics()), [isAuthenticated]);
   const fetchTrades = useCallback(() => (isAuthenticated ? api.getDemoTrades(50) : Promise.resolve([])), [isAuthenticated]);
-  const { data: account, loading, refetch } = usePolling(fetchAccount, 12000);
-  const { data: trades = [] } = usePolling(fetchTrades, 15000);
+  const { data: accountRaw, loading, refetch } = usePolling(fetchAccount, 12000);
+  const { data: tradesRaw } = usePolling(fetchTrades, 15000);
+  const account = accountRaw ?? null;
+  const trades = tradesRaw ?? [];
 
   if (!isAuthenticated) {
     return (

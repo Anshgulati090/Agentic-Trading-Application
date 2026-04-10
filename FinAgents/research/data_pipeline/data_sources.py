@@ -67,7 +67,8 @@ class DataSourceManager:
             cache_dir: Path to local cache directory. Defaults to project data/cache.
         """
         if cache_dir is None:
-            self.cache_dir = Path("c:/Users/anshg/Agentic-Trading-Application-1/data/cache")
+            project_root = Path(__file__).resolve().parents[3]
+            self.cache_dir = project_root / "data" / "cache"
         else:
             self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)

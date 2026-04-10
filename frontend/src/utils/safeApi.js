@@ -3,9 +3,10 @@
  * Ensures all API calls return structured responses with proper error handling
  */
 
-const DEFAULT_TIMEOUT = 12000; // 12 seconds
+const DEFAULT_TIMEOUT = 8000; // 8 seconds
+const AUTH_TIMEOUT = 5000; // 5 seconds for auth calls
 const MAX_RETRIES = 2;
-const RETRY_DELAY = 1000; // 1 second
+const RETRY_DELAY = 500; // 0.5 second
 
 /**
  * Delay helper for retries

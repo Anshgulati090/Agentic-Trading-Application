@@ -149,32 +149,54 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         display_name=payload.full_name or username,
         username=username,
         demo_balance=settings.DEMO_BALANCE,
-        email_verified=False,
-        verification_token=verification_token,
-        verification_sent_at=datetime.utcnow(),
+        email_verified=True,            # auto-verify — no SMTP needed
+        verification_token=None,
+        verification_sent_at=None,
     )
     db.add(user)
     db.flush()
     _create_demo_account(db, user)
     db.commit()
-    send_verification_email(user.email, verification_token)
-    preview_url = build_verification_link(verification_token) if settings.DEBUG else None
     return RegisterResponse(
-        message="Account created. Please verify your email before logging in.",
+        message="Account created successfully. You can log in now.",
         email=user.email,
-        verification_preview_url=preview_url,
+        verification_required=False,
+        verification_preview_url=None,
     )
 
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
+    
+    # Auto-provision the demo account on first login attempt
+    if not user and payload.email == "demo@agentictrading.com":
+        username = _build_username(db, payload.email)
+        user = User(
+            email=payload.email,
+            password_hash=hash_password("demo123"),
+            full_name="Demo Trader",
+            is_demo_user=True,
+            display_name="Demo Trader",
+            username=username,
+            demo_balance=settings.DEMO_BALANCE,
+            email_verified=True,
+        )
+        db.add(user)
+        db.flush()
+        _create_demo_account(db, user)
+        db.commit()
+        db.refresh(user)
+
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
+
+    # Auto-fix: if somehow email_verified is False, fix it now (local demo mode)
     if not user.email_verified:
-        raise HTTPException(status_code=403, detail="Please verify your email before signing in")
+        user.email_verified = True
+        db.commit()
 
     # Ensure demo account exists
     if not user.demo_account:

@@ -1,0 +1,35 @@
+{
+  "symbols": [
+    "AAPL",
+    "MSFT",
+    "GOOG"
+  ],
+  "initial_prices": {
+    "AAPL": 152.0,
+    "MSFT": 152.0,
+    "GOOG": 152.0
+  },
+  "num_steps": 120,
+  "initial_capital": 1000000.0,
+  "use_coordinator": true,
+  "enable_events": true,
+  "random_seed": 42,
+  "market_config": {
+    "forced_regime": "BULL"
+  },
+  "event_config": {},
+  "agent_config": {},
+  "multimodal_config": {},
+  "include_multimodal_agent": true,
+  "include_analyst_agent": true,
+  "include_risk_manager": true,
+  "include_portfolio_manager": true,
+  "gating_enabled": true,
+  "memory_enabled": true,
+  "messaging_enabled": true,
+  "broader_signals_enabled": true,
+  "planner_adaptation_enabled": true,
+  "replication_artifact_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\enhanced",
+  "context_provider": "BroaderSignalContextProvider",
+  "post_step_callback": "on_step_end"
+}

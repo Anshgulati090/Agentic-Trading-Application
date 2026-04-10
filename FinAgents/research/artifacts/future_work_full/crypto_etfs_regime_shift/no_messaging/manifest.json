@@ -1,0 +1,23 @@
+{
+  "scenario": "crypto_etfs_regime_shift",
+  "variant": "no_messaging",
+  "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\no_messaging",
+  "total_return_pct": 0.005053219086430617,
+  "final_portfolio_value": 1005053.2190864306,
+  "sharpe_ratio": -12.96952532976695,
+  "max_drawdown": 0.001468979285063369,
+  "num_decisions": 2553,
+  "num_snapshots": 52,
+  "config": {
+    "symbols": [
+      "IBIT",
+      "FBTC",
+      "GBTC"
+    ],
+    "horizon_steps": 252,
+    "gating_enabled": true,
+    "memory_enabled": true,
+    "messaging_enabled": false,
+    "broader_signals_enabled": true
+  }
+}

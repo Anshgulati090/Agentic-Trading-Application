@@ -11,8 +11,11 @@ export function resolveWsBase() {
   }
 
   if (typeof window !== 'undefined') {
+    // In development (Vite dev server on port 3000), proxy /ws to backend
+    // In production, use same host
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}/ws`;
+    const host = window.location.host; // e.g. localhost:3000
+    return `${protocol}//${host}/ws`; // Vite proxies /ws -> ws://127.0.0.1:8000
   }
 
   return 'ws://127.0.0.1:8000/ws';
@@ -37,7 +40,7 @@ export class SignalWebSocket {
     this.ws = null;
     this.reconnectTimer = null;
     this.attempts = 0;
-    this.maxAttempts = 8;
+    this.maxAttempts = 15;
     this.active = true;
     this._status = WS_STATUS.IDLE;
   }

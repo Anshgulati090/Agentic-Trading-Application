@@ -90,20 +90,34 @@ function AgentCard({ agent, onExecute }) {
 
 export default function Agents() {
   const [agents, setAgents] = useState([]);
+  const [symbol, setSymbol] = useState('AAPL');
+  const [quantity, setQuantity] = useState('1');
+  const [executionMode, setExecutionMode] = useState('paper');
 
   useEffect(() => {
     api.getLearningAgents().then(setAgents).catch(() => setAgents([]));
   }, []);
 
-  const execute = useCallback((agent) => api.executeAgent({ agent_id: agent.id, strategy: agent.strategy }), []);
+  const execute = useCallback(
+    (agent) =>
+      api.executeAgent({
+        agent_id: agent.id,
+        strategy: agent.strategy,
+        symbol: symbol.trim().toUpperCase() || 'AAPL',
+        quantity: Math.max(Number(quantity) || 1, 0.0001),
+        execute_trade: true,
+        execution_mode: executionMode,
+      }),
+    [executionMode, quantity, symbol],
+  );
 
   const summary = useMemo(
     () => [
       { label: 'Agents', value: `${agents.length || 6}`, sub: 'Interactive strategy modules' },
       { label: 'Use case', value: 'Education first', sub: 'Every agent comes with a why' },
-      { label: 'Mode', value: 'Demo safe', sub: 'No real broker execution' },
+      { label: 'Mode', value: executionMode === 'live' ? 'Live broker route' : 'Paper route', sub: 'Signals use live provider quotes' },
     ],
-    [agents.length],
+    [agents.length, executionMode],
   );
 
   return (
@@ -128,6 +142,34 @@ export default function Agents() {
                 </div>
               ))}
             </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_140px_190px]">
+              <input
+                value={symbol}
+                onChange={(event) => setSymbol(event.target.value)}
+                className="rounded-xl border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-500"
+                placeholder="Symbol (e.g. AAPL, BTC-USD)"
+              />
+              <input
+                value={quantity}
+                onChange={(event) => setQuantity(event.target.value)}
+                type="number"
+                min="0.0001"
+                step="0.1"
+                className="rounded-xl border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-500"
+                placeholder="Quantity"
+              />
+              <select
+                value={executionMode}
+                onChange={(event) => setExecutionMode(event.target.value)}
+                className="rounded-xl border border-zinc-700 bg-zinc-950/60 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-cyan-500"
+              >
+                <option value="paper">Paper execution</option>
+                <option value="live">Live broker execution</option>
+              </select>
+            </div>
+            <p className="mt-2 text-xs text-zinc-500">
+              Live mode is safety-gated server-side. If disabled or credentials are missing, the API returns a controlled rejection without crashing.
+            </p>
           </div>
 
           <div className="rounded-[26px] border border-zinc-800/80 bg-zinc-950/45 p-5">
@@ -135,7 +177,7 @@ export default function Agents() {
             <div className="space-y-3 text-sm text-zinc-400">
               <p>1. Read the agent brief.</p>
               <p>2. Confirm you understand the crux.</p>
-              <p>3. Execute in demo mode to see how the system responds.</p>
+              <p>3. Execute against live market quotes to see how the system responds.</p>
               <p>4. Compare the output with the dashboard signal stream and the market detail page.</p>
             </div>
           </div>

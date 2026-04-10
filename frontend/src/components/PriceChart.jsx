@@ -1,6 +1,8 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { api, getMockPriceHistory } from "../services/api";
 import { SYMBOLS } from "../data/marketCatalog";
+import { formatPrice } from "../utils/format";
+import { safeArray } from "../utils/safeApi";
 
 const RANGES = [
   { label: "15M", points: 32 },
@@ -34,11 +36,12 @@ function rangeToQuery(label) {
 }
 
 function normalizeCandles(rows, symbol, rangeLabel, points) {
-  if (!Array.isArray(rows) || rows.length === 0) {
+  const safeRows = safeArray(rows);
+  if (safeRows.length === 0) {
     return [];
   }
 
-  const normalized = rows
+  const normalized = safeRows
     .map((row, index) => {
       const close = Number(row?.close ?? row?.price ?? 0);
       const open = Number(row?.open ?? close);
@@ -153,8 +156,9 @@ export default function PriceChart({
 
   const { minP, maxP } = useMemo(() => {
     if (!candles.length) return { minP: 0, maxP: 1 };
-    const lows = candles.map((c) => c.low ?? c.close);
-    const highs = candles.map((c) => c.high ?? c.close);
+    const lows = candles.map((c) => c.low ?? c.close ?? 0);
+    const highs = candles.map((c) => c.high ?? c.close ?? 0);
+    if (!lows.length || !highs.length) return { minP: 0, maxP: 1 };
     const minPrice = Math.min(...lows);
     const maxPrice = Math.max(...highs);
     const pad = (maxPrice - minPrice || 1) * 0.06;
@@ -170,7 +174,7 @@ export default function PriceChart({
     ? candles.map((_, i) => i)
     : [0, Math.floor(candles.length * 0.25), Math.floor(candles.length * 0.5), Math.floor(candles.length * 0.75), candles.length - 1];
 
-  const isUp = (c) => c.close >= c.open;
+  const isUp = (c) => (c.close ?? 0) >= (c.open ?? c.close ?? 0);
   const lastClose = candles[candles.length - 1]?.close;
   const firstClose = candles[0]?.close;
   const totalReturn = lastClose && firstClose ? ((lastClose - firstClose) / firstClose) * 100 : 0;
@@ -222,7 +226,7 @@ export default function PriceChart({
 
         <div className="flex items-center gap-4 font-mono text-xs flex-wrap justify-end">
           {loading && <span className="text-zinc-500">Refreshing...</span>}
-          <span className="text-zinc-200 text-sm">${Number(activePrice).toFixed(symbol === "BTC" || symbol === "ETH" ? 0 : 2)}</span>
+          <span className="text-zinc-200 text-sm">{formatPrice(activePrice, symbol)}</span>
           <span className={isProfit ? "text-emerald-400" : "text-red-400"}>
             {isProfit ? "+" : ""}{totalReturn.toFixed(2)}%
           </span>
@@ -258,7 +262,7 @@ export default function PriceChart({
               <g key={i}>
                 <line x1={PAD.left} y1={y} x2={W - PAD.right} y2={y} stroke="#27272a" strokeWidth="1" />
                 <text x={PAD.left - 6} y={y + 4} textAnchor="end" fill="#52525b" fontSize="9" fontFamily="monospace">
-                  ${price.toFixed(symbol === "BTC" || symbol === "ETH" ? 0 : 2)}
+                  {formatPrice(price, symbol)}
                 </text>
               </g>
             );
@@ -278,14 +282,14 @@ export default function PriceChart({
           ) : (
             candles.map((c, i) => {
               const color = isUp(c) ? "#34d399" : "#f87171";
-              const bodyTop = toY(Math.max(c.open, c.close));
-              const bodyBottom = toY(Math.min(c.open, c.close));
+              const bodyTop = toY(Math.max(c.open ?? c.close ?? 0, c.close ?? 0));
+              const bodyBottom = toY(Math.min(c.open ?? c.close ?? 0, c.close ?? 0));
               const bodyHeight = Math.max(1, bodyBottom - bodyTop);
               const cx = toX(i);
 
               return (
                 <g key={i}>
-                  <line x1={cx} y1={toY(c.high ?? c.close)} x2={cx} y2={toY(c.low ?? c.close)} stroke={color} strokeWidth="1" opacity="0.7" />
+                  <line x1={cx} y1={toY(c.high ?? c.close ?? 0)} x2={cx} y2={toY(c.low ?? c.close ?? 0)} stroke={color} strokeWidth="1" opacity="0.7" />
                   <rect x={cx - candleW / 2} y={bodyTop} width={candleW} height={bodyHeight} fill={color} opacity={hover === i ? 1 : 0.78} rx="0.5" />
                 </g>
               );
@@ -312,10 +316,10 @@ export default function PriceChart({
 
       {hoverCandle && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs font-mono">
-          <div className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-zinc-400">Open <span className="text-zinc-100 ml-2">${hoverCandle.open?.toFixed(2)}</span></div>
-          <div className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-zinc-400">High <span className="text-emerald-400 ml-2">${hoverCandle.high?.toFixed(2)}</span></div>
-          <div className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-zinc-400">Low <span className="text-red-400 ml-2">${hoverCandle.low?.toFixed(2)}</span></div>
-          <div className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-zinc-400">Close <span className="text-zinc-100 ml-2">${hoverCandle.close?.toFixed(2)}</span></div>
+          <div className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-zinc-400">Open <span className="text-zinc-100 ml-2">{formatPrice(hoverCandle.open, symbol)}</span></div>
+          <div className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-zinc-400">High <span className="text-emerald-400 ml-2">{formatPrice(hoverCandle.high, symbol)}</span></div>
+          <div className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-zinc-400">Low <span className="text-red-400 ml-2">{formatPrice(hoverCandle.low, symbol)}</span></div>
+          <div className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-zinc-400">Close <span className="text-zinc-100 ml-2">{formatPrice(hoverCandle.close, symbol)}</span></div>
           <div className="rounded border border-zinc-800 bg-zinc-900/40 px-3 py-2 text-zinc-400">Volume <span className="text-zinc-100 ml-2">{Number(hoverCandle.volume ?? 0).toLocaleString()}</span></div>
         </div>
       )}

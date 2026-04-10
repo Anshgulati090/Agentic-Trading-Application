@@ -13,6 +13,7 @@ from backend.services.execution_service import ExecutionService
 from backend.services.live_signal_service import LiveSignalService
 from backend.market.data_provider import MarketDataProvider
 from backend.cache.cache_service import CacheService
+from backend.services.builtin_agents import register_builtin_agents
 
 
 class AgentManager:
@@ -38,6 +39,7 @@ class AgentManager:
         self._execution = execution_service or ExecutionService()
         self._cache = cache
         self._strategies: Dict[str, Dict[str, Any]] = {}
+        register_builtin_agents(self._registry)
 
     def register_agent(self, name: str, agent_cls: Type[BaseAgent]) -> None:
         """Register an agent class. Raises if name already registered."""

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { api } from '../services/api';
 import { usePolling } from '../hooks/usePolling';
+import { formatPrice } from '../utils/format';
 
 function Metric({ label, value, sub, color = 'text-zinc-100', loading = false }) {
   return (
@@ -61,7 +62,7 @@ export default function PortfolioCard() {
               <div key={sym} className="grid grid-cols-3 text-xs font-mono items-center">
                 <span className="text-cyan-400">{sym}</span>
                 <span className="text-zinc-400 text-center">{pos.qty ?? pos.quantity ?? '?'} sh</span>
-                <span className="text-zinc-300 text-right">{fmt(pos.value ?? pos.market_value) ?? '-'}</span>
+                <span className="text-zinc-300 text-right">{formatPrice(pos.value ?? pos.market_value, sym)}</span>
               </div>
             ))}
           </div>

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from FinAgents.research.coordination.coordinator import AgentCoordinator
 from FinAgents.research.data_pipeline.data_sources import (
@@ -63,6 +63,14 @@ class ResearchSystemConfig:
     include_analyst_agent: bool = True
     include_risk_manager: bool = True
     include_portfolio_manager: bool = True
+    gating_enabled: bool = True
+    memory_enabled: bool = True
+    messaging_enabled: bool = True
+    broader_signals_enabled: bool = True
+    planner_adaptation_enabled: bool = True
+    replication_artifact_dir: Optional[str] = None
+    context_provider: Optional[Callable[..., Any]] = None
+    post_step_callback: Optional[Callable[..., None]] = None
 
 
 @dataclass
@@ -108,7 +116,7 @@ class ResearchSystemIntegrator:
         reward_engine = RewardEngine()
         learning_loop = LearningLoop(
             trade_memory=trade_memory,
-            experience_replay=experience_replay,
+            replay_buffer=experience_replay,
             reward_engine=reward_engine,
         )
 
@@ -163,7 +171,7 @@ class ResearchSystemIntegrator:
 
         if self.config.include_analyst_agent:
             agents["analyst"] = AnalystAgent("research_analyst", self.config.agent_config)
-        if self.config.include_risk_manager:
+        if self.config.include_risk_manager and self.config.gating_enabled:
             agents["risk_manager"] = RiskManagerAgent("research_risk", self.config.agent_config)
         if self.config.include_portfolio_manager:
             agents["portfolio_manager"] = PortfolioManagerAgent(
@@ -193,11 +201,13 @@ class ResearchSystemIntegrator:
             num_steps=self.config.num_steps,
             initial_capital=self.config.initial_capital,
             agents=agents,
-            use_coordinator=self.config.use_coordinator,
+            use_coordinator=self.config.use_coordinator and self.config.messaging_enabled,
             enable_events=self.config.enable_events,
             random_seed=self.config.random_seed,
             market_config=self.config.market_config,
             event_config=self.config.event_config,
+            context_provider=self.config.context_provider,
+            post_step_callback=self.config.post_step_callback,
         )
         return SimulationRunner(config)
 

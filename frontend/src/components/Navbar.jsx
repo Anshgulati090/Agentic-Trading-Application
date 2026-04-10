@@ -1,285 +1,332 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { searchMarkets } from '../data/marketCatalog';
-import { PREMIUM_COLORS, ANIMATIONS, COMPONENTS, TYPOGRAPHY } from '../styles/premiumDesignSystem';
 
 const NAV_LINKS = [
-  { to: '/markets', label: 'Markets' },
-  { to: '/learn', label: 'Learn' },
+  { to: '/markets',   label: 'Markets' },
+  { to: '/learn',     label: 'Learn' },
   { to: '/dashboard', label: 'Dashboard' },
   { to: '/portfolio', label: 'Portfolio' },
-  { to: '/profile', label: 'Profile' },
-  { to: '/agents', label: 'AI Agents' },
+  { to: '/profile',   label: 'Profile' },
+  { to: '/agents',    label: 'AI Agents' },
 ];
 
 export default function Navbar() {
   const { isAuthenticated, user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
-  const [scrolled, setScrolled] = useState(false);
-
-  // Detect scroll for glassmorphism effect
-  useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  const [showSearch, setShowSearch] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const searchRef = useRef(null);
+  const inputRef  = useRef(null);
 
   const isActive = (to) => location.pathname.startsWith(to);
 
+  /* Search suggestions — local first (instant), then merge remote */
   useEffect(() => {
-    const timer = window.setTimeout(async () => {
-      const trimmed = query.trim();
-      if (!trimmed) {
-        setSuggestions([]);
-        return;
-      }
+    const trimmed = query.trim();
+    if (!trimmed) { setSuggestions([]); return; }
 
+    // Show local results instantly (no delay)
+    const local = searchMarkets(trimmed, 8);
+    setSuggestions(local);
+    setShowSearch(true);
+
+    // Then merge backend results asynchronously
+    const timer = window.setTimeout(async () => {
       try {
         const response = await api.searchSymbols(trimmed);
-        const remote = response?.results || [];
-        const local = searchMarkets(trimmed).map((item) => ({
-          symbol: item.symbol,
-          name: item.name,
-          sector: item.sector,
-        }));
-        setSuggestions(Array.from(new Map([...local, ...remote].map((item) => [item.symbol, item])).values()).slice(0, 6));
+        // Handle both {data:{results:[]}} and {results:[]} shapes
+        const raw = response?.data || response;
+        const remote = Array.isArray(raw) ? raw : (raw?.results || []);
+        if (!remote.length) return;
+        setSuggestions((prev) =>
+          Array.from(new Map([...prev, ...remote].map((i) => [i.symbol, i])).values()).slice(0, 8)
+        );
       } catch {
-        setSuggestions(searchMarkets(trimmed).slice(0, 6));
+        // local results already shown — ignore backend errors
       }
-    }, 180);
-
+    }, 300);
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  const topIdentity = useMemo(() => user?.full_name || user?.email || 'Trader', [user]);
+  /* Click outside to close suggestions */
+  useEffect(() => {
+    const handler = (e) => {
+      if (searchRef.current && !searchRef.current.contains(e.target)) {
+        setShowSearch(false);
+        setSuggestions([]);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
-  const submitSearch = (event) => {
-    event.preventDefault();
-    const next = suggestions[0];
-    if (next?.symbol) {
-      navigate(`/markets/${next.symbol}`);
-      setQuery('');
-      setSuggestions([]);
-    } else if (query.trim()) {
-      navigate(`/markets?query=${encodeURIComponent(query.trim())}`);
-      setSuggestions([]);
-    }
-  };
+  /* Keyboard shortcut ⌘K / Ctrl+K */
+  useEffect(() => {
+    const k = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(true);
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
+      if (e.key === 'Escape') { setShowSearch(false); setSuggestions([]); }
+    };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, []);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-    setUserMenuOpen(false);
-  };
-
-  const openAssistant = () => {
-    window.dispatchEvent(new Event('agentic:assistant-open'));
-    setMobileOpen(false);
+  const handleSelect = (symbol) => {
+    setQuery('');
+    setSuggestions([]);
+    setShowSearch(false);
+    navigate(`/markets/${symbol}`);
   };
 
   return (
-    <nav className={`sticky top-0 z-50 transition-all duration-500 ${
-      scrolled 
-        ? 'bg-black/80 backdrop-blur-2xl border-zinc-800/50 shadow-2xl shadow-black/50' 
-        : 'bg-transparent border-transparent'
-    } border-b`}>
-      <div className="max-w-[1680px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex min-h-[72px] items-center gap-4">
-          {/* Logo - Enhanced with glow effect */}
-          <Link to="/" className="group flex items-center gap-3 shrink-0">
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 text-cyan-300 text-sm font-bold transition-all duration-300 group-hover:scale-110 group-hover:shadow-[0_0_30px_-5px_rgba(34,211,238,0.4)]">
+    <header
+      style={{
+        position: 'sticky', top: 0, zIndex: 90,
+        background: 'rgba(4, 12, 18, 0.92)',
+        backdropFilter: 'blur(20px)',
+        borderBottom: '1px solid rgba(0, 183, 255, 0.1)',
+        boxShadow: '0 1px 30px rgba(0,0,0,0.5)',
+      }}
+    >
+      <div style={{ maxWidth: 1600, margin: '0 auto', padding: '0 1.25rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', height: 56, gap: 8 }}>
+
+          {/* Logo */}
+          <Link
+            to="/"
+            style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', flexShrink: 0 }}
+          >
+            <div style={{
+              width: 32, height: 32, borderRadius: 8,
+              background: 'linear-gradient(135deg, #0099cc 0%, #00e676 100%)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 13, fontWeight: 800, color: '#000', fontFamily: 'JetBrains Mono, monospace',
+              boxShadow: '0 0 12px rgba(0,212,255,0.4)',
+              flexShrink: 0,
+            }}>
               AGT
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-cyan-400/20 to-blue-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </div>
-            <div className="hidden md:block">
-              <div className="text-base font-bold bg-clip-text text-transparent bg-gradient-to-r from-zinc-100 via-zinc-200 to-zinc-100">AgenticTrading</div>
-              <div className="text-[10px] uppercase tracking-[0.25em] text-zinc-500">AI-Powered Trading Platform</div>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#e8f4ff', letterSpacing: '-0.02em' }}>AgenticTrading</span>
+              <span style={{ fontSize: 9, color: '#3d607a', letterSpacing: '0.2em', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace' }}>AI-Powered</span>
             </div>
           </Link>
 
-          {/* Search Bar - Premium Design */}
-          <form onSubmit={submitSearch} className="relative hidden lg:block flex-1 max-w-2xl">
-            <div className="group relative">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-cyan-400 transition-colors duration-300">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-              </div>
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search markets, companies, or symbols..."
-                className="w-full rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur-xl pl-12 pr-5 py-3.5 text-sm text-zinc-100 placeholder-zinc-600 outline-none transition-all duration-300 focus:border-cyan-500/50 focus:bg-zinc-900/80 focus:shadow-[0_0_30px_-8px_rgba(34,211,238,0.3)] hover:border-zinc-700"
-              />
-              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                <kbd className="hidden md:inline-flex h-6 items-center gap-1 rounded-md border border-zinc-700 bg-zinc-800/50 px-2 font-mono text-[10px] text-zinc-500">
-                  <span className="text-xs">⌘</span>K
-                </kbd>
-              </div>
-            </div>
-            
-            {/* Enhanced Suggestions Dropdown */}
-            {!!suggestions.length && (
-              <div className="absolute left-0 right-0 top-full z-50 mt-3 overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/95 backdrop-blur-2xl shadow-2xl shadow-black/80 animate-in slide-in-from-top-2 duration-200">
-                <div className="max-h-[400px] overflow-y-auto scrollbar-thin scrollbar-track-zinc-900 scrollbar-thumb-zinc-700">
-                  {suggestions.map((item, idx) => (
-                    <button
-                      key={item.symbol}
-                      type="button"
-                      onClick={() => {
-                        navigate(`/markets/${item.symbol}`);
-                        setQuery('');
-                        setSuggestions([]);
-                      }}
-                      className={`group flex w-full items-center justify-between px-5 py-4 text-left transition-all duration-200 ${
-                        idx === 0 ? 'bg-gradient-to-r from-cyan-500/10 to-transparent' : ''
-                      } hover:bg-zinc-800/60 border-b border-zinc-800/50 last:border-0`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/20 text-cyan-400 font-mono text-sm font-bold border border-cyan-500/20 group-hover:scale-110 transition-transform duration-200">
-                          {item.symbol}
-                        </div>
-                        <div>
-                          <div className="font-semibold text-zinc-100 group-hover:text-white">{item.name}</div>
-                          <div className="text-xs text-zinc-500 group-hover:text-zinc-400">{item.sector}</div>
-                        </div>
-                      </div>
-                      <div className="text-[10px] uppercase tracking-widest text-zinc-600 group-hover:text-cyan-400 transition-colors">
-                        →
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </form>
-
-          {/* Navigation Links - Enhanced */}
-          <div className="hidden xl:flex items-center gap-1">
-            {NAV_LINKS.map((link) => (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={`relative rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-300 group ${
-                  isActive(link.to)
-                    ? 'text-white'
-                    : 'text-zinc-400 hover:text-white'
-                }`}
-              >
-                {isActive(link.to) && (
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-500/20 to-blue-500/20 border border-cyan-500/30"></div>
-                )}
-                <span className="relative z-10 flex items-center gap-2">
-                  {link.label}
-                  <span className={`h-1.5 w-1.5 rounded-full ${
-                    isActive(link.to) ? 'bg-cyan-400' : 'bg-transparent group-hover:bg-cyan-400/50'
-                  } transition-all duration-300`}></span>
-                </span>
-              </Link>
-            ))}
-            <button
-              type="button"
-              onClick={openAssistant}
-              className="rounded-xl px-3 py-2 text-sm text-zinc-500 transition-colors hover:bg-zinc-800/60 hover:text-zinc-200"
+          {/* Search bar */}
+          <div ref={searchRef} style={{ position: 'relative', flex: 1, maxWidth: 340, marginLeft: 8 }}>
+            <div
+              onClick={() => { setShowSearch(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                background: 'rgba(10, 21, 32, 0.9)',
+                border: `1px solid ${showSearch ? 'rgba(0,212,255,0.4)' : 'rgba(0,183,255,0.1)'}`,
+                borderRadius: 8, padding: '0 12px', height: 34, cursor: 'text',
+                transition: 'border-color 0.2s',
+                boxShadow: showSearch ? '0 0 0 3px rgba(0,212,255,0.08)' : 'none',
+              }}
             >
-              AI Assistant
-            </button>
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            {isAuthenticated ? (
-              <div className="relative">
-                <button
-                  onClick={() => setUserMenuOpen((value) => !value)}
-                  className="flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/70 px-3 py-2"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-500/10 text-[11px] font-bold text-cyan-300">
-                    {topIdentity[0]?.toUpperCase()}
-                  </div>
-                  <div className="hidden sm:block text-left">
-                    <div className="max-w-[10rem] truncate text-sm text-zinc-200">{topIdentity}</div>
-                    <div className="text-[10px] font-mono text-zinc-500">${Number(user?.demo_balance || 0).toLocaleString('en-US')}</div>
-                  </div>
-                </button>
-
-                {userMenuOpen && (
-                  <div className="absolute right-0 top-full z-50 mt-3 w-64 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 shadow-2xl shadow-black/40">
-                    <div className="border-b border-zinc-800 px-4 py-4">
-                      <div className="text-sm text-zinc-100">{topIdentity}</div>
-                      <div className="mt-1 text-xs text-zinc-500">{user?.email}</div>
-                    </div>
-                    <div className="p-2">
-                      {['/dashboard', '/portfolio', '/profile', '/agents'].map((to) => (
-                        <Link key={to} to={to} onClick={() => setUserMenuOpen(false)} className="block rounded-xl px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
-                          {to.replace('/', '').replace(/^\w/, (char) => char.toUpperCase())}
-                        </Link>
-                      ))}
-                      <button onClick={handleLogout} className="mt-1 w-full rounded-xl px-3 py-2 text-left text-sm text-red-400 hover:bg-red-500/10">
-                        Sign Out
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                <Link to="/login" className="hidden sm:block text-sm text-zinc-400 hover:text-zinc-200">Login</Link>
-                <Link to="/signup" className="btn-primary">Get Started</Link>
-              </>
-            )}
-
-            <button
-              onClick={() => setMobileOpen((value) => !value)}
-              className="xl:hidden rounded-xl p-2 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={mobileOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'} />
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3d607a" strokeWidth={2.5}>
+                <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-            </button>
-          </div>
-        </div>
-
-        {mobileOpen && (
-          <div className="border-t border-zinc-800/70 py-4 xl:hidden">
-            <form onSubmit={submitSearch} className="mb-3">
               <input
+                ref={inputRef}
                 value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search tickers or companies..."
-                className="w-full rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 outline-none focus:border-cyan-500"
+                onChange={(e) => { setQuery(e.target.value); setShowSearch(true); }}
+                placeholder="Search markets, companies or symbols..."
+                style={{
+                  background: 'transparent', border: 'none', outline: 'none',
+                  fontSize: 13, color: '#e8f4ff', width: '100%', fontFamily: 'inherit',
+                }}
               />
-            </form>
-            <div className="grid gap-1">
-              {NAV_LINKS.map((link) => (
+              <kbd style={{
+                fontSize: 9, color: '#3d607a', border: '1px solid rgba(0,183,255,0.12)',
+                borderRadius: 4, padding: '2px 5px', fontFamily: 'JetBrains Mono, monospace',
+                flexShrink: 0, letterSpacing: '0.05em',
+              }}>⌘K</kbd>
+            </div>
+
+            {/* Suggestions dropdown */}
+            {showSearch && suggestions.length > 0 && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+                background: '#071018', border: '1px solid rgba(0,183,255,0.2)',
+                borderRadius: 10, overflow: 'hidden',
+                boxShadow: '0 8px 40px rgba(0,0,0,0.6)', zIndex: 100,
+              }}>
+                {suggestions.map((item) => (
+                  <button
+                    key={item.symbol}
+                    type="button"
+                    onClick={() => handleSelect(item.symbol)}
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      width: '100%', padding: '10px 14px', background: 'transparent',
+                      border: 'none', cursor: 'pointer', textAlign: 'left',
+                      borderBottom: '1px solid rgba(0,183,255,0.05)',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,183,255,0.06)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <div>
+                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#00d4ff', fontWeight: 600 }}>
+                        {item.symbol}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#4d7a96', marginTop: 1 }}>{item.name}</div>
+                    </div>
+                    <div style={{ fontSize: 10, color: '#3d607a', fontFamily: 'JetBrains Mono, monospace' }}>
+                      {item.sector}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Nav links */}
+          <nav style={{ display: 'flex', alignItems: 'center', gap: 2, marginLeft: 8 }}>
+            {NAV_LINKS.map(({ to, label }) => {
+              const active = isActive(to);
+              return (
                 <Link
-                  key={link.to}
-                  to={link.to}
-                  onClick={() => setMobileOpen(false)}
-                  className={`rounded-xl px-3 py-2 text-sm ${
-                    isActive(link.to) ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200'
-                  }`}
+                  key={to}
+                  to={to}
+                  style={{
+                    padding: '5px 10px',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontWeight: active ? 600 : 400,
+                    color: active ? '#00d4ff' : '#7a9ab5',
+                    textDecoration: 'none',
+                    background: active ? 'rgba(0,212,255,0.08)' : 'transparent',
+                    border: `1px solid ${active ? 'rgba(0,212,255,0.2)' : 'transparent'}`,
+                    transition: 'all 0.15s',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseEnter={(e) => { if (!active) { e.currentTarget.style.color = '#e8f4ff'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; } }}
+                  onMouseLeave={(e) => { if (!active) { e.currentTarget.style.color = '#7a9ab5'; e.currentTarget.style.background = 'transparent'; } }}
                 >
-                  {link.label}
+                  {active && <span style={{ marginRight: 4, fontSize: 8, color: '#00d4ff' }}>●</span>}
+                  {label}
                 </Link>
-              ))}
+              );
+            })}
+          </nav>
+
+          {/* AI Assistant button */}
+          <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event('agentic:assistant-open'))}
+            style={{
+              padding: '5px 12px', borderRadius: 6, fontSize: 12,
+              background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.18)',
+              color: '#00d4ff', cursor: 'pointer', transition: 'all 0.2s',
+              fontFamily: 'JetBrains Mono, monospace', whiteSpace: 'nowrap', flexShrink: 0,
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,212,255,0.12)'; e.currentTarget.style.borderColor = 'rgba(0,212,255,0.35)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,212,255,0.06)'; e.currentTarget.style.borderColor = 'rgba(0,212,255,0.18)'; }}
+          >
+            AI Assistant
+          </button>
+
+          {/* Auth */}
+          {isAuthenticated ? (
+            <div style={{ position: 'relative', flexShrink: 0 }}>
               <button
                 type="button"
-                onClick={openAssistant}
-                className="rounded-xl px-3 py-2 text-left text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                onClick={() => setUserMenuOpen((v) => !v)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  background: 'rgba(0,183,255,0.06)', border: '1px solid rgba(0,183,255,0.15)',
+                  borderRadius: 8, padding: '5px 10px', cursor: 'pointer', transition: 'all 0.2s',
+                }}
               >
-                AI Assistant
+                <div style={{
+                  width: 26, height: 26, borderRadius: 6,
+                  background: 'linear-gradient(135deg, #0099cc, #00e676)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700, color: '#000',
+                }}>
+                  {(user?.display_name || user?.email || 'U')[0].toUpperCase()}
+                </div>
+                <span style={{ fontSize: 12, color: '#7a9ab5' }}>▾</span>
               </button>
+              {userMenuOpen && (
+                <div style={{
+                  position: 'absolute', top: 'calc(100% + 6px)', right: 0, width: 180,
+                  background: '#071018', border: '1px solid rgba(0,183,255,0.15)',
+                  borderRadius: 10, overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.6)', zIndex: 100,
+                }}>
+                  <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(0,183,255,0.08)' }}>
+                    <div style={{ fontSize: 12, color: '#e8f4ff', fontWeight: 600 }}>{user?.display_name || 'Trader'}</div>
+                    <div style={{ fontSize: 10, color: '#3d607a', marginTop: 2 }}>{user?.email}</div>
+                  </div>
+                  {[
+                    { label: 'Portfolio', to: '/portfolio' },
+                    { label: 'Profile', to: '/profile' },
+                  ].map(({ label, to }) => (
+                    <Link
+                      key={to} to={to}
+                      onClick={() => setUserMenuOpen(false)}
+                      style={{ display: 'block', padding: '9px 14px', fontSize: 13, color: '#7a9ab5', textDecoration: 'none', transition: 'all 0.15s' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,183,255,0.06)'; e.currentTarget.style.color = '#e8f4ff'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#7a9ab5'; }}
+                    >
+                      {label}
+                    </Link>
+                  ))}
+                  <button
+                    type="button" onClick={() => { logout(); setUserMenuOpen(false); }}
+                    style={{ display: 'block', width: '100%', padding: '9px 14px', fontSize: 13, color: '#ff3d57', textAlign: 'left', background: 'transparent', border: 'none', cursor: 'pointer', borderTop: '1px solid rgba(0,183,255,0.08)', transition: 'background 0.15s' }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,61,87,0.06)'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                  >
+                    Sign Out
+                  </button>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          ) : (
+            <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+              <Link to="/login" style={{ padding: '5px 12px', borderRadius: 6, fontSize: 13, color: '#7a9ab5', textDecoration: 'none', transition: 'color 0.2s' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#e8f4ff'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#7a9ab5'}>
+                Login
+              </Link>
+              <Link to="/signup" style={{
+                padding: '5px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600,
+                background: 'linear-gradient(135deg, #0099cc, #00b8e6)',
+                color: '#000', textDecoration: 'none',
+                boxShadow: '0 2px 12px rgba(0,180,220,0.3)', transition: 'all 0.2s',
+              }}>
+                Get Started
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
-    </nav>
+
+      {/* Mobile menu */}
+      {mobileOpen && (
+        <div style={{ padding: '0.5rem 1.25rem 1rem', borderTop: '1px solid rgba(0,183,255,0.08)' }}>
+          {NAV_LINKS.map(({ to, label }) => (
+            <Link key={to} to={to} onClick={() => setMobileOpen(false)}
+              style={{ display: 'block', padding: '8px 0', color: isActive(to) ? '#00d4ff' : '#7a9ab5', textDecoration: 'none', fontSize: 14 }}>
+              {label}
+            </Link>
+          ))}
+        </div>
+      )}
+    </header>
   );
 }

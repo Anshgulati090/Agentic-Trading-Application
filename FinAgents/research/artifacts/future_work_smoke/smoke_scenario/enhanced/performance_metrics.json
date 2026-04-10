@@ -1,0 +1,40 @@
+{
+  "total_return": 3.238491697702557e-07,
+  "sharpe_ratio": 12.068581869634059,
+  "sortino_ratio": 0.0,
+  "calmar_ratio": 1896634.5033489356,
+  "max_drawdown": 8.605768864586571e-12,
+  "max_drawdown_peak_step": 3,
+  "max_drawdown_trough_step": 4,
+  "current_drawdown": 0.0,
+  "volatility": 1.352437024741569e-06,
+  "win_rate": 0.0,
+  "profit_factor": 0.0,
+  "num_trades": 3,
+  "benchmark_comparison": {
+    "strategy_return": 3.238491697702557e-07,
+    "benchmark_return": 0.11946265840813773,
+    "alpha": 4.958867259358778e-08,
+    "beta": 2.295784313117089e-06,
+    "information_ratio": -10.462526803400234,
+    "tracking_error": 0.5642692902615601
+  },
+  "agent_attribution": {
+    "coordinator": {
+      "agent_id": "coordinator",
+      "total_pnl": 0.018847837798162216,
+      "num_trades": 3,
+      "win_rate": 0.3333333333333333,
+      "avg_pnl_per_trade": 0.006282612599387405,
+      "contribution_pct": 1.0
+    }
+  },
+  "equity_curve": [
+    1000000.0,
+    1000000.0,
+    1000000.0,
+    1000000.1128110627,
+    1000000.112802457,
+    1000000.3238491698
+  ]
+}

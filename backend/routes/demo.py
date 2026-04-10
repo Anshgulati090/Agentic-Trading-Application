@@ -17,7 +17,7 @@ class TradeRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=10)
     action: Literal["BUY", "SELL"]
     quantity: float = Field(..., gt=0)
-    price: float = Field(..., gt=0)
+    price: float = Field(..., gt=0) # Kept for backward compatibility, but overridden by server
     notes: Optional[str] = None
 
 
@@ -98,9 +98,18 @@ def execute_demo_trade(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from backend.routes.market import get_price
+    
     acct = _get_account(db, current_user)
     symbol = payload.symbol.upper()
-    total_cost = payload.quantity * payload.price
+    
+    try:
+        price_res = get_price(symbol)
+        true_price = float(price_res["data"]["price"])
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"Market closed or could not verify price for {symbol}")
+        
+    total_cost = payload.quantity * true_price
 
     if payload.action == "BUY":
         if acct.balance < total_cost:
@@ -121,7 +130,7 @@ def execute_demo_trade(
                 account_id=acct.id,
                 symbol=symbol,
                 quantity=payload.quantity,
-                avg_cost=payload.price,
+                avg_cost=true_price,
             )
             db.add(pos)
 
@@ -137,7 +146,7 @@ def execute_demo_trade(
             have = pos.quantity if pos else 0
             raise HTTPException(status_code=400, detail=f"Insufficient shares. Have {have:.4f}, need {payload.quantity:.4f}")
 
-        realized_pnl = (payload.price - pos.avg_cost) * payload.quantity
+        realized_pnl = (true_price - pos.avg_cost) * payload.quantity
         pos.quantity -= payload.quantity
         if pos.quantity <= 0.0001:
             db.delete(pos)
@@ -151,7 +160,7 @@ def execute_demo_trade(
         symbol=symbol,
         action=payload.action,
         quantity=payload.quantity,
-        price=payload.price,
+        price=true_price,
         total_value=total_cost,
         pnl=realized_pnl,
         notes=payload.notes,
@@ -165,7 +174,7 @@ def execute_demo_trade(
         "symbol": symbol,
         "action": payload.action,
         "quantity": payload.quantity,
-        "price": payload.price,
+        "price": true_price,
         "total_value": total_cost,
         "new_balance": acct.balance,
         "pnl": realized_pnl,

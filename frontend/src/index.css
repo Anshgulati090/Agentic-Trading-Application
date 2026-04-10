@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,82 +6,411 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+:root {
+  --bg-base: #040c12;
+  --bg-surface: #071018;
+  --bg-card: #0a1520;
+  --bg-card-hover: #0d1a27;
+  --bg-elevated: #0f1f30;
+  --border-subtle: rgba(0, 183, 255, 0.08);
+  --border-default: rgba(0, 183, 255, 0.13);
+  --border-strong: rgba(0, 183, 255, 0.22);
+  --accent-cyan: #00d4ff;
+  --accent-cyan-dim: rgba(0, 212, 255, 0.12);
+  --green: #00e676;
+  --green-dim: rgba(0, 230, 118, 0.12);
+  --red: #ff3d57;
+  --red-dim: rgba(255, 61, 87, 0.12);
+  --amber: #ffb300;
+  --text-primary: #e8f4ff;
+  --text-secondary: #7a9ab5;
+  --text-muted: #3d607a;
+  --glow-cyan: 0 0 20px rgba(0, 212, 255, 0.15);
+  --glow-green: 0 0 20px rgba(0, 230, 118, 0.15);
+}
+
 html, body {
   margin: 0;
   padding: 0;
-  background:
-    radial-gradient(circle at top, rgba(8, 145, 178, 0.12), transparent 28%),
-    radial-gradient(circle at 80% 20%, rgba(16, 185, 129, 0.08), transparent 22%),
-    #09090b;
-  color: #f4f4f5;
-  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg-base);
+  background-image:
+    radial-gradient(ellipse 60% 40% at 50% -10%, rgba(0, 100, 180, 0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 30% at 80% 10%, rgba(0, 200, 120, 0.06) 0%, transparent 60%);
+  color: var(--text-primary);
+  font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
-}
-
-#root {
   min-height: 100vh;
 }
 
-.font-mono, code, pre, kbd, samp, [class*="font-mono"] {
+#root { min-height: 100vh; }
+
+.font-mono, code, pre, kbd, [class*="font-mono"] {
   font-family: 'JetBrains Mono', 'Cascadia Code', ui-monospace, monospace;
 }
 
+/* Scrollbar */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #52525b; }
-* { scrollbar-width: thin; scrollbar-color: #3f3f46 transparent; }
+::-webkit-scrollbar-thumb { background: #1a3a52; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #244d6a; }
+* { scrollbar-width: thin; scrollbar-color: #1a3a52 transparent; }
 
-::selection { background: rgba(6,182,212,0.25); color: #a5f3fc; }
+::selection { background: rgba(0, 212, 255, 0.2); color: #a0e8ff; }
 
+/* ═══════════════════════════════════════════════════════════
+   DESIGN TOKENS — Component layer
+══════════════════════════════════════════════════════════════ */
 @layer components {
+
+  /* ── Panels & Cards ── */
   .panel {
-    @apply bg-zinc-900/65 border border-zinc-800/90 rounded-2xl shadow-[0_18px_45px_rgba(0,0,0,0.22)];
+    background: var(--bg-card);
+    border: 1px solid var(--border-default);
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.03);
   }
+
+  .panel-glow {
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), var(--glow-cyan), inset 0 1px 0 rgba(0,212,255,0.06);
+  }
+
   .panel-title {
-    @apply text-[10px] uppercase tracking-[0.28em] text-zinc-500 font-mono mb-4 pb-3 border-b border-zinc-800 flex items-center justify-between;
+    @apply text-[10px] uppercase tracking-[0.3em] text-[--text-muted] font-mono mb-4 pb-3 border-b flex items-center justify-between;
+    border-color: var(--border-subtle);
+    color: #4d7a96;
   }
+
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  }
+
+  .card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-strong);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ── Buttons ── */
   .btn-primary {
-    @apply bg-cyan-500 hover:bg-cyan-400 text-zinc-900 font-semibold px-4 py-2 rounded-xl text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+    background: linear-gradient(135deg, #0099cc 0%, #00b8e6 100%);
+    color: #000;
+    font-weight: 600;
+    padding: 0.5rem 1.25rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0 2px 12px rgba(0, 180, 220, 0.3);
   }
+  .btn-primary:hover {
+    background: linear-gradient(135deg, #00b8e6 0%, #00d4ff 100%);
+    box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+    transform: translateY(-1px);
+  }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+
   .btn-ghost {
-    @apply border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-zinc-200 px-3 py-1.5 rounded-xl text-xs font-mono transition-colors;
+    background: transparent;
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
+    padding: 0.375rem 0.875rem;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all 0.2s;
+    cursor: pointer;
   }
+  .btn-ghost:hover {
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+    background: rgba(0, 212, 255, 0.05);
+  }
+
+  .btn-buy {
+    background: linear-gradient(135deg, #006633 0%, #009950 100%);
+    color: #00e676;
+    font-weight: 700;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    border: 1px solid rgba(0, 230, 118, 0.3);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    box-shadow: 0 2px 16px rgba(0, 230, 118, 0.2);
+  }
+  .btn-buy:hover { box-shadow: 0 4px 24px rgba(0, 230, 118, 0.35); transform: translateY(-1px); }
+
+  .btn-sell {
+    background: linear-gradient(135deg, #660022 0%, #990033 100%);
+    color: #ff3d57;
+    font-weight: 700;
+    padding: 0.75rem 1.5rem;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    border: 1px solid rgba(255, 61, 87, 0.3);
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    box-shadow: 0 2px 16px rgba(255, 61, 87, 0.2);
+  }
+  .btn-sell:hover { box-shadow: 0 4px 24px rgba(255, 61, 87, 0.35); transform: translateY(-1px); }
+
+  /* ── Inputs ── */
   .input {
-    @apply w-full bg-zinc-900/90 border border-zinc-700 focus:border-cyan-500 text-zinc-100 rounded-xl px-4 py-2.5 text-sm outline-none transition-colors placeholder:text-zinc-600;
+    width: 100%;
+    background: rgba(7, 16, 24, 0.8);
+    border: 1px solid var(--border-default);
+    color: var(--text-primary);
+    border-radius: 8px;
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    font-family: inherit;
   }
+  .input:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.12);
+  }
+  .input::placeholder { color: var(--text-muted); }
+
+  /* ── Signal badges ── */
   .badge-buy {
-    @apply text-emerald-400 bg-emerald-400/10 border border-emerald-400/30 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider font-mono;
+    background: var(--green-dim);
+    color: var(--green);
+    border: 1px solid rgba(0, 230, 118, 0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
   }
   .badge-sell {
-    @apply text-red-400 bg-red-400/10 border border-red-400/30 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider font-mono;
+    background: var(--red-dim);
+    color: var(--red);
+    border: 1px solid rgba(255, 61, 87, 0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
   }
   .badge-hold {
-    @apply text-amber-400 bg-amber-400/10 border border-amber-400/30 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider font-mono;
+    background: rgba(255, 179, 0, 0.1);
+    color: var(--amber);
+    border: 1px solid rgba(255, 179, 0, 0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
   }
+
+  /* ── Price display utilities ── */
+  .price-positive { color: var(--green); }
+  .price-negative { color: var(--red); }
+  .price-neutral  { color: var(--text-secondary); }
+
+  /* ── Stat tile ── */
+  .stat-tile {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 1rem;
+  }
+
+  /* ── Section kicker ── */
+  .section-kicker {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── Page hero ── */
   .page-hero {
-    @apply relative overflow-hidden rounded-[28px] border border-zinc-800/80 bg-zinc-900/60 shadow-[0_30px_80px_rgba(0,0,0,0.28)];
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    border: 1px solid var(--border-default);
+    background: linear-gradient(135deg, var(--bg-card) 0%, var(--bg-elevated) 100%);
+    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
   }
   .hero-glow {
-    @apply absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(6,182,212,0.18),transparent_36%),radial-gradient(circle_at_80%_20%,rgba(34,197,94,0.08),transparent_22%)];
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 70% 60% at 0% 0%, rgba(0,150,220,0.14) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 50% at 100% 100%, rgba(0,200,100,0.06) 0%, transparent 60%);
+    pointer-events: none;
   }
-  .stat-tile {
-    @apply rounded-2xl border border-zinc-800/90 bg-zinc-950/55 p-4;
+
+  /* ── Live dot ── */
+  .live-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse-dot 2s ease infinite;
   }
-  .section-kicker {
-    @apply text-[10px] uppercase tracking-[0.3em] text-zinc-500 font-mono;
+  .live-dot-amber {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 6px var(--amber);
+    animation: pulse-dot 2s ease infinite;
   }
+
+  /* ── Table styles ── */
+  .data-table { width: 100%; border-collapse: collapse; }
+  .data-table thead tr { border-bottom: 1px solid var(--border-subtle); }
+  .data-table thead th {
+    padding: 0.75rem 1rem;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: var(--text-muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 400;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .data-table tbody tr {
+    border-bottom: 1px solid rgba(0,183,255,0.04);
+    transition: background 0.15s;
+  }
+  .data-table tbody tr:last-child { border-bottom: none; }
+  .data-table tbody tr:hover { background: rgba(0, 183, 255, 0.04); }
+  .data-table td {
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+  }
+
+  /* ── Market card (for ticker grid) ── */
+  .market-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 0.875rem 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .market-card:hover {
+    border-color: var(--border-strong);
+    background: var(--bg-card-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+  }
+  .market-card.active {
+    border-color: rgba(0, 212, 255, 0.4);
+    background: rgba(0, 212, 255, 0.05);
+    box-shadow: inset 0 1px 0 rgba(0,212,255,0.1);
+  }
+
+  /* ── Number display ── */
+  .num { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum'; tabular-nums: normal; }
+
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ANIMATIONS
+══════════════════════════════════════════════════════════════ */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
 }
 
 @keyframes shimmer {
-  0% { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+  0% { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
 }
+
+@keyframes ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes flash-green {
+  0%, 100% { color: inherit; }
+  50% { color: var(--green); text-shadow: 0 0 8px rgba(0, 230, 118, 0.5); }
+}
+@keyframes flash-red {
+  0%, 100% { color: inherit; }
+  50% { color: var(--red); text-shadow: 0 0 8px rgba(255, 61, 87, 0.5); }
+}
+
+/* ── Skeleton ── */
 .skeleton {
-  background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
-  background-size: 400px 100%;
-  animation: shimmer 1.4s ease infinite;
-  border-radius: 3px;
+  background: linear-gradient(90deg, #0a1520 25%, #0f2035 50%, #0a1520 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.6s ease infinite;
+  border-radius: 4px;
 }
+
+/* ── Flash animations for price updates ── */
+.price-flash-up { animation: flash-green 0.5s ease; }
+.price-flash-down { animation: flash-red 0.5s ease; }
+
+/* ── Fade in animation ── */
+.fade-in { animation: fadeInUp 0.3s ease forwards; }
+
+/* ── Ticker scroll ── */
+.ticker-wrap { overflow: hidden; }
+.ticker-inner { display: flex; animation: ticker-scroll 40s linear infinite; white-space: nowrap; }
+.ticker-inner:hover { animation-play-state: paused; }
+
+/* ── Scrollable signal feed ── */
+.signal-feed { max-height: 20rem; overflow-y: auto; }
+
+/* ── Neon glow text ── */
+.neon-cyan { color: var(--accent-cyan); text-shadow: 0 0 10px rgba(0, 212, 255, 0.4); }
+.neon-green { color: var(--green); text-shadow: 0 0 10px rgba(0, 230, 118, 0.4); }
+.neon-red { color: var(--red); text-shadow: 0 0 10px rgba(255, 61, 87, 0.4); }
+
+/* ── Up/Down coloring ── */
+.up { color: var(--green) !important; }
+.down { color: var(--red) !important; }
+
+/* ── Gradient borders ── */
+.border-gradient {
+  border: 1px solid transparent;
+  background: linear-gradient(var(--bg-card), var(--bg-card)) padding-box,
+              linear-gradient(135deg, rgba(0,212,255,0.3), rgba(0,230,118,0.15)) border-box;
+}
+
+/* ── Override Tailwind zinc with our dark blues ── */
+.bg-zinc-950 { background-color: var(--bg-base); }
+.bg-zinc-900 { background-color: var(--bg-surface); }
+.border-zinc-800 { border-color: var(--border-default); }
+
+/* ── Responsive container ── */
+.app-container { max-width: 1600px; margin: 0 auto; padding: 0 1.5rem; }

@@ -10,6 +10,13 @@ from FinAgents.research.integration.research_report import (
     ResearchReport,
     ResearchReportGenerator,
 )
+from FinAgents.research.integration.future_work_suite import (
+    BroaderSignalContextProvider,
+    FutureWorkScenario,
+    FutureWorkVariant,
+    ReplicationArtifactWriter,
+    run_future_work_suite,
+)
 
 __all__ = [
     "ResearchSystem",
@@ -18,4 +25,9 @@ __all__ = [
     "run_demo",
     "ResearchReport",
     "ResearchReportGenerator",
+    "BroaderSignalContextProvider",
+    "FutureWorkScenario",
+    "FutureWorkVariant",
+    "ReplicationArtifactWriter",
+    "run_future_work_suite",
 ]

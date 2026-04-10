@@ -9,7 +9,7 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import numpy as np
 
@@ -63,6 +63,10 @@ class SimulationConfig:
         Additional market environment configuration.
     event_config : dict
         Additional event engine configuration.
+    context_provider : callable or None
+        Optional callback that can enrich or replace MarketContext on each step.
+    post_step_callback : callable or None
+        Optional callback invoked after each simulation step for logging/memory.
     """
 
     symbols: List[str]
@@ -75,6 +79,8 @@ class SimulationConfig:
     random_seed: Optional[int] = None
     market_config: Dict[str, Any] = field(default_factory=dict)
     event_config: Dict[str, Any] = field(default_factory=dict)
+    context_provider: Optional[Callable[..., Any]] = None
+    post_step_callback: Optional[Callable[..., None]] = None
 
 
 @dataclass
@@ -297,6 +303,18 @@ class SimulationRunner:
                 agent_attributions=agent_attributions,
             )
 
+            if self.config.post_step_callback is not None:
+                self.config.post_step_callback(
+                    step=step,
+                    market_states=market_states,
+                    events=step_events,
+                    filled_orders=filled_orders,
+                    trades=trades,
+                    decisions=decisions,
+                    portfolio_value=portfolio_value,
+                    benchmark_value=benchmark_value,
+                )
+
             # Step 9: Take snapshots periodically
             if step % 5 == 0:
                 snapshot = self.save_snapshot()
@@ -357,6 +375,18 @@ class SimulationRunner:
             benchmark_value=benchmark_value,
             trades=trades,
         )
+
+        if self.config.post_step_callback is not None:
+            self.config.post_step_callback(
+                step=step,
+                market_states=market_states,
+                events=step_events,
+                filled_orders=filled_orders,
+                trades=trades,
+                decisions=decisions,
+                portfolio_value=portfolio_value,
+                benchmark_value=benchmark_value,
+            )
 
         self._current_step += 1
 
@@ -510,12 +540,41 @@ class SimulationRunner:
         state = self.market.states.get(symbol)
         active_events = self.events.get_active_events(self._current_step)
 
-        return MarketContext(
+        default_context = MarketContext(
             regime=state.regime.value if state else "SIDEWAYS",
             volatility_level=state.volatility if state else 0.02,
             sentiment=0.0,  # Neutral default
             events=[e.description for e in active_events if symbol in e.affected_symbols],
         )
+
+        if self.config.context_provider is None:
+            return default_context
+
+        enriched = self.config.context_provider(
+            step=self._current_step,
+            symbol=symbol,
+            market_data=self.market.get_market_data(symbol),
+            state=state,
+            active_events=active_events,
+            default_context=default_context,
+        )
+
+        if enriched is None:
+            return default_context
+        if isinstance(enriched, MarketContext):
+            return enriched
+        if isinstance(enriched, dict):
+            merged = {
+                "regime": default_context.regime,
+                "volatility_level": default_context.volatility_level,
+                "sentiment": default_context.sentiment,
+                "macro_indicators": default_context.macro_indicators,
+                "events": default_context.events,
+            }
+            merged.update(enriched)
+            return MarketContext(**merged)
+
+        return default_context
 
     def _update_portfolio(self, filled_orders: List[Order]) -> None:
         """Update portfolio based on filled orders.

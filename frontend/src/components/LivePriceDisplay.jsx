@@ -1,5 +1,6 @@
 import { usePriceStream } from '../hooks/usePriceStream';
 import { WS_STATUS } from '../services/websocket';
+import { formatPrice } from '../utils/format';
 
 /**
  * Real-time price display with live updates via WebSocket
@@ -47,7 +48,7 @@ export default function LivePriceDisplay({ symbol, showLatency = true }) {
       {/* Price Display */}
       <div className="flex items-baseline gap-3">
         <div className="text-3xl font-light font-mono text-zinc-100">
-          ${Number(data.price || 0).toFixed(2)}
+          {formatPrice(data.price, symbol)}
         </div>
         
         {data.change != null && (

@@ -6,6 +6,7 @@ import { usePolling } from '../hooks/usePolling';
 import { useSignalStream } from '../hooks/useSignalStream';
 import { WS_STATUS } from '../services/websocket';
 import CandlestickChart from '../components/CandlestickChart';
+import { safeArray } from '../utils/safeApi';
 
 function Panel({ title, children, className = '', action }) {
   return (
@@ -41,62 +42,90 @@ function MarketTicker({ onSelect }) {
   const [selected, setSelected] = useState('AAPL');
   const fetchPrices = async () => {
     try {
-      const results = await Promise.allSettled(
-        SYMBOLS.map((symbol) => api.getMarketPrice(symbol).then((payload) => [symbol, payload?.data || payload])),
-      );
-
-      return results.reduce((acc, result) => {
-        if (result.status === 'fulfilled') {
-          const [symbol, quote] = result.value;
-          acc[symbol] = quote;
+      // Stagger symbol fetches in batches to avoid browser overload
+      const batchSize = 3;
+      const result = {};
+      for (let i = 0; i < SYMBOLS.length; i += batchSize) {
+        // Add delay between batches (except first)
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 400));
         }
-        return acc;
-      }, {});
+        const batch = SYMBOLS.slice(i, i + batchSize);
+        const settled = await Promise.allSettled(
+          batch.map((symbol) =>
+            fetch(`/api/market/price/${symbol}`, { signal: AbortSignal.timeout(8000) })
+              .then(async (r) => {
+                if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                return r.json();
+              })
+              .then((json) => {
+                const quote = json?.data || json;
+                // Validate we got a valid price
+                if (!Number.isFinite(quote?.price)) {
+                  console.warn(`Invalid price data for ${symbol}:`, quote);
+                }
+                return [symbol, quote];
+              })
+          )
+        );
+        settled.forEach((res) => {
+          if (res.status === 'fulfilled') {
+            const [symbol, quote] = res.value;
+            if (Number.isFinite(quote?.price)) {
+              result[symbol] = quote;
+            }
+          } else {
+            const symbol = batch[settled.indexOf(res)];
+            console.warn(`Failed to fetch price for ${symbol}:`, res.reason?.message || res.reason);
+          }
+        });
+      }
+      return result;
     } catch (error) {
       console.error('Failed to fetch prices:', error);
-      return {}; // Return empty object on error
+      return {};
     }
   };
 
-  const { data: prices = {}, loading } = usePolling(fetchPrices, 12000);
+  const { data: prices = {}, loading } = usePolling(fetchPrices, 18000);
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
       {SYMBOLS.map((symbol) => {
         const quote = prices?.[symbol] || null;
         const positive = (quote?.change ?? 0) >= 0;
+        const hasData = quote?.price != null && Number.isFinite(quote.price);
         return (
           <button
             key={symbol}
             type="button"
-            onClick={() => {
-              setSelected(symbol);
-              onSelect?.(symbol);
+            onClick={() => { setSelected(symbol); onSelect?.(symbol); }}
+            style={{
+              background: selected === symbol ? 'rgba(0,212,255,0.07)' : 'rgba(10,21,32,0.8)',
+              border: `1px solid ${selected === symbol ? 'rgba(0,212,255,0.35)' : 'rgba(0,183,255,0.1)'}`,
+              borderRadius: 10, padding: '10px 12px', textAlign: 'left', cursor: 'pointer',
+              transition: 'all 0.2s', boxShadow: selected === symbol ? '0 0 0 1px rgba(0,212,255,0.1)' : 'none',
             }}
-            className={`rounded-2xl border p-4 text-left transition-all ${
-              selected === symbol
-                ? 'border-cyan-500/50 bg-cyan-500/10 shadow-[0_0_0_1px_rgba(6,182,212,0.12)]'
-                : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700 hover:bg-zinc-900/70'
-            }`}
+            onMouseEnter={(e) => { if (selected !== symbol) { e.currentTarget.style.borderColor = 'rgba(0,183,255,0.25)'; e.currentTarget.style.background = 'rgba(10,21,32,0.95)'; } }}
+            onMouseLeave={(e) => { if (selected !== symbol) { e.currentTarget.style.borderColor = 'rgba(0,183,255,0.1)'; e.currentTarget.style.background = 'rgba(10,21,32,0.8)'; } }}
           >
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[10px] font-mono tracking-[0.28em] text-zinc-500">{symbol}</span>
-              {quote?.change_pct != null ? (
-                <span className={`text-[10px] font-mono ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {positive ? '+' : ''}
-                  {(quote.change_pct * 100).toFixed(2)}%
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.2em', color: '#4d7a96', fontWeight: 700 }}>{symbol}</span>
+              {hasData && (
+                <span style={{ fontSize: 9, fontFamily: 'JetBrains Mono, monospace', color: positive ? '#00e676' : '#ff3d57' }}>
+                  {positive ? '+' : ''}{(quote.change_pct * 100).toFixed(2)}%
                 </span>
-              ) : null}
+              )}
             </div>
             {loading && !quote ? (
-              <div className="skeleton h-6 w-20 mt-3" />
+              <div className="skeleton" style={{ height: 22, width: 80, borderRadius: 4, marginTop: 4 }} />
             ) : (
               <>
-                <div className="mt-3 text-xl font-light font-mono tabular-nums text-zinc-100">
-                  ${typeof quote?.price === 'number' ? quote.price.toFixed(2) : '-'}
+                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 16, fontWeight: 700, color: hasData ? (positive ? '#00e676' : '#ff3d57') : '#3d607a', marginTop: 2 }}>
+                  {hasData ? (quote.price >= 1000 ? `$${Number(quote.price).toLocaleString('en-US', { maximumFractionDigits: 0 })}` : `$${Number(quote.price).toFixed(2)}`) : '$—'}
                 </div>
-                <div className={`mt-1 text-xs font-mono ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {quote?.change != null ? `${positive ? '+' : ''}${quote.change.toFixed(2)}` : 'Waiting for quote'}
+                <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: hasData ? (positive ? '#00e676' : '#ff3d57') : '#3d607a', marginTop: 3, opacity: 0.8 }}>
+                  {hasData ? `${positive ? '+' : ''}${quote.change.toFixed(2)}` : 'Loading...'}
                 </div>
               </>
             )}
@@ -109,7 +138,7 @@ function MarketTicker({ onSelect }) {
 
 function SignalStream({ symbol }) {
   const { messages = [], status, reconnect } = useSignalStream(symbol, 24);
-  const safeMessages = Array.isArray(messages) ? messages : [];
+  const safeMessages = safeArray(messages);
   const meta = {
     [WS_STATUS.CONNECTED]: { label: 'Live', tone: 'text-emerald-400', dot: 'bg-emerald-400 animate-pulse' },
     [WS_STATUS.CONNECTING]: { label: 'Connecting', tone: 'text-amber-400', dot: 'bg-amber-400 animate-pulse' },
@@ -170,8 +199,8 @@ function SignalStream({ symbol }) {
 
 function PortfolioCard() {
   const { isAuthenticated } = useAuth();
-  const fetch = async () => (isAuthenticated ? api.getDemoAccount() : api.getPortfolioMetrics());
-  const { data: account, loading, error, refetch } = usePolling(fetch, 10000);
+  const fetchAccount = async () => (isAuthenticated ? api.getDemoAccount() : api.getPortfolioMetrics());
+  const { data: account, loading, error, refetch } = usePolling(fetchAccount, 10000);
 
   if (!isAuthenticated) {
     return (
@@ -228,18 +257,22 @@ function PortfolioCard() {
       <div className="space-y-2">
         <div className="section-kicker">Open positions</div>
         {account?.positions?.length ? (
-          account.positions.slice(0, 5).map((position) => (
-            <div key={position.symbol} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/35 px-3 py-3 text-sm">
-              <div>
-                <div className="font-mono text-cyan-400">{position.symbol}</div>
-                <div className="text-xs text-zinc-500">{position.quantity} shares</div>
+          safeArray(account.positions).slice(0, 5).map((position) => {
+            const pnl = Number(position?.unrealized_pnl ?? 0);
+            const isPnlPositive = pnl >= 0;
+            return (
+              <div key={position.symbol} className="grid grid-cols-[1fr_auto_auto] items-center gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/35 px-3 py-3 text-sm">
+                <div>
+                  <div className="font-mono text-cyan-400">{position.symbol}</div>
+                  <div className="text-xs text-zinc-500">{position.quantity} shares</div>
+                </div>
+                <div className="text-right font-mono text-zinc-300">${Number(position.avg_cost || 0).toFixed(2)}</div>
+                <div className={`text-right font-mono ${isPnlPositive ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {isPnlPositive ? '+' : ''}${Math.abs(pnl).toFixed(2)}
+                </div>
               </div>
-              <div className="text-right font-mono text-zinc-300">${Number(position.avg_cost || 0).toFixed(2)}</div>
-              <div className={`text-right font-mono ${Number(position.unrealized_pnl || 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {Number(position.unrealized_pnl || 0) >= 0 ? '+' : ''}${Math.abs(Number(position.unrealized_pnl || 0)).toFixed(2)}
-              </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-6 text-sm text-zinc-500">
             No open positions yet. Browse markets and place your first paper trade.
@@ -274,30 +307,37 @@ function AgentStatus() {
   };
 
   return (
-    <div className="grid gap-3">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {AGENTS.map((agent) => {
         const state = states[agent.id] || 'idle';
-        const dotClass = {
-          running: 'bg-amber-400 animate-pulse',
-          ready: 'bg-emerald-400',
-          error: 'bg-red-400',
-          idle: 'bg-zinc-600',
-        }[state];
+        const dotColor = { running: '#ffb300', ready: '#00e676', error: '#ff3d57', idle: '#1a3a52' }[state];
+        const dotGlow = state === 'running' ? '0 0 6px #ffb300' : state === 'ready' ? '0 0 6px #00e676' : 'none';
 
         return (
-          <div key={agent.id} className="rounded-2xl border border-zinc-800 bg-zinc-950/45 px-4 py-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-                  <div className="truncate text-sm text-zinc-100">{agent.label}</div>
-                </div>
-                <div className="mt-1 text-[11px] text-zinc-500">{agent.mode}</div>
+          <div key={agent.id} style={{
+            background: 'rgba(10,21,32,0.6)', border: '1px solid rgba(0,183,255,0.08)',
+            borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+          }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: dotColor, boxShadow: dotGlow, flexShrink: 0, animation: state === 'running' ? 'pulse-dot 1s ease infinite' : 'none' }} />
+                <span style={{ fontSize: 12, color: '#e8f4ff', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{agent.label}</span>
               </div>
-              <button type="button" onClick={() => runAgent(agent)} disabled={state === 'running'} className="btn-ghost shrink-0">
-                {state === 'running' ? 'Running...' : 'Execute'}
-              </button>
+              <div style={{ fontSize: 10, color: '#3d607a', marginTop: 3, marginLeft: 15, fontFamily: 'JetBrains Mono, monospace' }}>{agent.mode}</div>
             </div>
+            <button
+              type="button" onClick={() => runAgent(agent)} disabled={state === 'running'}
+              style={{
+                padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
+                background: state === 'ready' ? 'rgba(0,230,118,0.1)' : state === 'error' ? 'rgba(255,61,87,0.1)' : 'transparent',
+                border: `1px solid ${state === 'ready' ? 'rgba(0,230,118,0.3)' : state === 'error' ? 'rgba(255,61,87,0.3)' : 'rgba(0,183,255,0.15)'}`,
+                color: state === 'ready' ? '#00e676' : state === 'error' ? '#ff3d57' : '#4d7a96',
+                transition: 'all 0.2s', flexShrink: 0, fontFamily: 'JetBrains Mono, monospace',
+                opacity: state === 'running' ? 0.5 : 1,
+              }}
+            >
+              {state === 'running' ? '⟳ Running' : state === 'ready' ? '✓ Done' : state === 'error' ? '✗ Error' : 'Execute'}
+            </button>
           </div>
         );
       })}
@@ -307,9 +347,9 @@ function AgentStatus() {
 
 function TradeHistory() {
   const { isAuthenticated } = useAuth();
-  const fetch = async () => (isAuthenticated ? api.getDemoTrades(20) : []);
-  const { data: trades = [], loading } = usePolling(fetch, 12000);
-  const safeTrades = Array.isArray(trades) ? trades : [];
+  const fetchTrades = async () => (isAuthenticated ? api.getDemoTrades(20) : []);
+  const { data: tradesRaw, loading } = usePolling(fetchTrades, 15000);
+  const safeTrades = safeArray(tradesRaw ?? []);
 
   if (!isAuthenticated) {
     return <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/35 px-4 py-6 text-sm text-zinc-500">Sign in to see your latest trades.</div>;
@@ -399,110 +439,85 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="space-y-6">
-      <section className="page-hero">
-        <div className="hero-glow" />
-        <div className="relative grid gap-6 px-6 py-6 lg:grid-cols-[1.3fr_0.7fr] lg:px-8 lg:py-8">
-          <div>
-            <div className="section-kicker mb-3">Trading workspace</div>
-            <h1 className="max-w-3xl text-3xl font-light tracking-tight text-zinc-100 sm:text-4xl">
-              A cleaner command center for learning markets, tracking demo capital, and following AI agents live.
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-400 sm:text-base">
-              Use the dashboard as your central workspace: scan live prices, watch agent signals, practice execution, and move into full market analysis without losing context.
-            </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              {topStats.map((stat) => (
-                <div key={stat.label} className="rounded-2xl border border-zinc-800/80 bg-zinc-950/45 p-4">
-                  <div className="section-kicker mb-2">{stat.label}</div>
-                  <div className="text-lg font-light text-zinc-100">{stat.value}</div>
-                  <div className="mt-1 text-xs text-zinc-500">{stat.sub}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-[26px] border border-zinc-800/80 bg-zinc-950/45 p-5">
-            <div className="section-kicker mb-3">Session snapshot</div>
-            <div className="space-y-4">
-              <div>
-                <div className="text-sm text-zinc-500">Trader</div>
-                <div className="mt-1 text-xl text-zinc-100">{isAuthenticated ? (user?.full_name || user?.email) : 'Guest mode'}</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* ── Hero ── */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(10,21,32,0.95) 0%, rgba(7,16,24,0.98) 100%)',
+        border: '1px solid rgba(0,183,255,0.15)', borderRadius: 16, padding: '24px 28px',
+        display: 'grid', gridTemplateColumns: '1fr auto', gap: 24,
+        boxShadow: '0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(0,212,255,0.06)',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 60% 80% at 0% 50%, rgba(0,100,200,0.1) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'relative' }}>
+          <div style={{ fontSize: 10, color: '#3d607a', textTransform: 'uppercase', letterSpacing: '0.3em', fontFamily: 'JetBrains Mono, monospace', marginBottom: 8 }}>Trading Workspace</div>
+          <h1 style={{ font: '300 26px/1.3 Inter, sans-serif', color: '#e8f4ff', margin: '0 0 6px', letterSpacing: '-0.02em', maxWidth: 500 }}>
+            Command Center — AI Agents · Live Signals · Paper Trading
+          </h1>
+          <p style={{ fontSize: 12, color: '#4d7a96', margin: '0 0 16px', lineHeight: 1.7, maxWidth: 480 }}>
+            Scan live prices, watch agent signals, practice execution, and move into full market analysis.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+            {topStats.map((stat) => (
+              <div key={stat.label} style={{ background: 'rgba(0,183,255,0.04)', border: '1px solid rgba(0,183,255,0.1)', borderRadius: 8, padding: '10px 14px' }}>
+                <div style={{ fontSize: 9, color: '#3d607a', textTransform: 'uppercase', letterSpacing: '0.25em', fontFamily: 'JetBrains Mono, monospace', marginBottom: 4 }}>{stat.label}</div>
+                <div style={{ fontSize: 15, color: '#e8f4ff', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>{stat.value}</div>
+                <div style={{ fontSize: 10, color: '#4d7a96', marginTop: 3 }}>{stat.sub}</div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/55 p-4">
-                  <div className="section-kicker mb-2">Demo balance</div>
-                  <div className="text-xl font-light font-mono text-zinc-100">
-                    ${Number(user?.demo_balance || 100000).toLocaleString('en-US')}
-                  </div>
-                </div>
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-900/55 p-4">
-                  <div className="section-kicker mb-2">Quick route</div>
-                  <div className="text-xl font-light text-zinc-100">{chartSymbol}</div>
-                </div>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Link to="/markets" className="btn-primary text-center">Browse Markets</Link>
-                <Link to="/portfolio" className="btn-ghost text-center">Open Portfolio</Link>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
-      </section>
+        <div style={{ minWidth: 220, background: 'rgba(0,183,255,0.04)', border: '1px solid rgba(0,183,255,0.12)', borderRadius: 10, padding: '16px 18px', position: 'relative' }}>
+          <div style={{ fontSize: 9, color: '#3d607a', textTransform: 'uppercase', letterSpacing: '0.25em', fontFamily: 'JetBrains Mono, monospace', marginBottom: 10 }}>Session</div>
+          <div style={{ fontSize: 12, color: '#4d7a96', marginBottom: 4 }}>Trader</div>
+          <div style={{ fontSize: 16, color: '#e8f4ff', fontWeight: 600, marginBottom: 14 }}>{isAuthenticated ? (user?.full_name || user?.email || 'Trader') : 'Guest Mode'}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+            {[['Demo Balance', `$${Number(user?.demo_balance || 100000).toLocaleString('en-US')}`], ['Symbol', chartSymbol]].map(([l, v]) => (
+              <div key={l} style={{ background: 'rgba(0,183,255,0.05)', border: '1px solid rgba(0,183,255,0.1)', borderRadius: 7, padding: '8px 10px' }}>
+                <div style={{ fontSize: 9, color: '#3d607a', fontFamily: 'JetBrains Mono, monospace', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.2em' }}>{l}</div>
+                <div style={{ fontSize: 14, color: '#e8f4ff', fontFamily: 'JetBrains Mono, monospace', fontWeight: 700 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <Link to="/markets" className="btn-primary" style={{ textDecoration: 'none', textAlign: 'center', fontSize: 12, padding: '7px' }}>Markets</Link>
+            <Link to="/portfolio" className="btn-ghost" style={{ textDecoration: 'none', textAlign: 'center' }}>Portfolio</Link>
+          </div>
+        </div>
+      </div>
 
       <Panel
         title="Market Grid"
-        action={<Link to="/markets" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">full market overview</Link>}
+        action={<Link to="/markets" style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#3d607a' }} onMouseEnter={(e) => e.currentTarget.style.color = '#00d4ff'} onMouseLeave={(e) => e.currentTarget.style.color = '#3d607a'}>full market overview</Link>}
       >
         <MarketTicker onSelect={(symbol) => { setChartSymbol(symbol); setStreamSymbol(symbol); }} />
       </Panel>
 
-      <div className="grid gap-5 xl:grid-cols-[1.15fr_1.15fr_0.9fr]">
-        <Panel
-          title={`Signal Stream · ${streamSymbol}`}
-          action={<span className="text-[10px] font-mono text-zinc-600">live websocket</span>}
-        >
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 0.8fr', gap: 14 }}>
+        <Panel title={`Signal Stream · ${streamSymbol}`} action={<span style={{ fontSize: 9, color: '#3d607a', fontFamily: 'JetBrains Mono, monospace' }}>LIVE WEBSOCKET</span>}>
           <SignalStream symbol={streamSymbol} />
         </Panel>
-
-        <Panel
-          title="Portfolio Overview"
-          action={<Link to="/portfolio" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">open detailed view</Link>}
-        >
+        <Panel title="Portfolio Overview" action={<Link to="/portfolio" style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#3d607a' }}>open detailed view</Link>}>
           <PortfolioCard />
         </Panel>
-
-        <Panel
-          title="Agent Status"
-          action={<Link to="/agents" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">all agent docs</Link>}
-        >
+        <Panel title="Agent Status" action={<Link to="/agents" style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#3d607a' }}>all agents</Link>}>
           <AgentStatus />
         </Panel>
       </div>
 
-      <div className="grid gap-5 2xl:grid-cols-[1.45fr_0.85fr]">
-        <Panel
-          title={`Price Chart · ${chartSymbol}`}
-          action={<Link to={`/markets/${chartSymbol}`} className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">full market page</Link>}
-        >
-          <CandlestickChart symbol={chartSymbol} height={380} />
+      <div style={{ display: 'grid', gridTemplateColumns: '3fr 1.3fr', gap: 14 }}>
+        <Panel title={`Price Chart · ${chartSymbol}`} action={<Link to={`/markets/${chartSymbol}`} style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#3d607a' }}>full market page</Link>}>
+          <CandlestickChart symbol={chartSymbol} height={360} />
         </Panel>
-
-        <Panel
-          title="Learning Hub"
-          action={<Link to="/learn" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">all lessons</Link>}
-        >
-          <div className="mb-4 text-sm text-zinc-500">
+        <Panel title="Learning Hub" action={<Link to="/learn" style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#3d607a' }}>all lessons</Link>}>
+          <div style={{ fontSize: 12, color: '#4d7a96', marginBottom: 12, lineHeight: 1.7 }}>
             Learn why the platform is producing each signal before you place a paper trade.
           </div>
           <LearningRail />
         </Panel>
       </div>
 
-      <Panel
-        title="Recent Trades"
-        action={<Link to="/portfolio" className="text-[10px] font-mono text-zinc-600 hover:text-cyan-400">portfolio ledger</Link>}
-      >
+      <Panel title="Recent Trades" action={<Link to="/portfolio" style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#3d607a' }}>portfolio ledger</Link>}>
         <TradeHistory />
       </Panel>
     </div>

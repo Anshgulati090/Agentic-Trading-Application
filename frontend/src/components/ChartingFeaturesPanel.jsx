@@ -124,77 +124,61 @@ export default function ChartingFeaturesPanel() {
   ];
 
   return (
-    <div className="fixed bottom-6 right-6 z-50">
-      {/* Toggle Button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg shadow-blue-600/30 transition-all hover:scale-105"
-      >
-        <span className="text-xl">🎓</span>
-        <span className="font-mono text-sm">{isOpen ? 'Hide' : 'Learn'} Features</span>
-      </button>
+    <section className="panel p-5">
+      <div className="panel-title">
+        <span>Chart Features Guide</span>
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300"
+        >
+          {isOpen ? 'hide' : 'show all'}
+        </button>
+      </div>
 
-      {/* Features Panel */}
+      <div className="text-sm text-zinc-500 mb-3">
+        TradingView Pro chart — right-click for drawing tools, use the toolbar for indicators.
+      </div>
+
       {isOpen && (
-        <div className="absolute bottom-20 right-0 w-[800px] max-h-[600px] overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950/95 backdrop-blur-xl shadow-2xl">
-          {/* Header */}
-          <div className="sticky top-0 flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-xl">
-            <div>
-              <h2 className="text-lg font-semibold text-zinc-100">TradingView Pro Features</h2>
-              <p className="text-xs text-zinc-500 mt-0.5">Professional-grade charting toolkit</p>
-            </div>
-            <button
-              onClick={() => setIsOpen(false)}
-              className="text-zinc-500 hover:text-zinc-300 transition-colors"
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className="p-6 grid gap-6 md:grid-cols-2">
-            {features.map((section, idx) => (
-              <div
-                key={idx}
-                className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4"
-              >
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-2xl">{section.icon}</span>
-                  <h3 className="font-semibold text-zinc-200">{section.category}</h3>
-                </div>
-                <ul className="space-y-1.5">
-                  {section.items.map((item, i) => (
-                    <li
-                      key={i}
-                      className="text-sm text-zinc-400 flex items-start gap-2"
-                    >
-                      <span className="w-1 h-1 rounded-full bg-blue-500 mt-1.5 flex-shrink-0"></span>
-                      {item}
-                    </li>
-                  ))}
-                </ul>
+        <div className="space-y-4 max-h-[480px] overflow-y-auto">
+          {features.map((section, idx) => (
+            <div key={idx} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <span>{section.icon}</span>
+                <span className="text-sm font-medium text-zinc-200">{section.category}</span>
               </div>
-            ))}
-          </div>
-
-          {/* Footer */}
-          <div className="sticky bottom-0 px-6 py-4 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur-xl">
-            <div className="flex items-center justify-between">
-              <div className="text-xs text-zinc-500">
-                📌 Tip: Right-click on chart to access more tools
+              <div className="grid grid-cols-2 gap-1">
+                {section.items.slice(0, 6).map((item, i) => (
+                  <div key={i} className="text-[11px] text-zinc-500 flex items-start gap-1.5">
+                    <span className="w-1 h-1 rounded-full bg-blue-500 mt-1.5 flex-shrink-0" />
+                    {item}
+                  </div>
+                ))}
               </div>
-              <a
-                href="https://www.tradingview.com/support/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-mono text-blue-400 hover:text-blue-300"
-              >
-                Full Documentation →
-              </a>
             </div>
-          </div>
+          ))}
+          <a
+            href="https://www.tradingview.com/support/"
+            target="_blank"
+            rel="noreferrer"
+            className="block text-center text-[10px] font-mono text-blue-400 hover:text-blue-300 mt-2"
+          >
+            Full TradingView Documentation →
+          </a>
         </div>
       )}
-    </div>
+
+      {!isOpen && (
+        <div className="grid grid-cols-3 gap-2">
+          {features.slice(0, 3).map((s) => (
+            <div key={s.category} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-2 text-center">
+              <div className="text-base mb-1">{s.icon}</div>
+              <div className="text-[10px] text-zinc-500">{s.category}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

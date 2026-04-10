@@ -424,6 +424,12 @@ class MarketEnvironment:
         self.jump_magnitude = self.config.get("jump_magnitude", 0.05)
         self.market_impact_factor = self.config.get("market_impact_factor", 0.001)
         self.regime_duration_range = self.config.get("regime_duration_range", (10, 50))
+        forced_regime = self.config.get("forced_regime")
+        self.forced_regime = (
+            forced_regime
+            if isinstance(forced_regime, MarketRegime) or forced_regime is None
+            else MarketRegime[str(forced_regime)]
+        )
 
         # Random number generator
         self._rng = np.random.default_rng()
@@ -436,6 +442,7 @@ class MarketEnvironment:
         for symbol in symbols:
             initial_price = initial_prices.get(symbol, 100.0)
             order_book = L2OrderBook(symbol, initial_price)
+            initial_regime = self.forced_regime or MarketRegime.SIDEWAYS
 
             self.states[symbol] = MarketState(
                 symbol=symbol,
@@ -445,8 +452,8 @@ class MarketEnvironment:
                 low=initial_price,
                 volume=0.0,
                 timestamp=datetime.utcnow(),
-                regime=MarketRegime.SIDEWAYS,
-                volatility=self.base_volatility,
+                regime=initial_regime,
+                volatility=self.base_volatility * self.REGIME_VOLATILITY[initial_regime],
                 bid=order_book.bids[0][0] if order_book.bids else initial_price,
                 ask=order_book.asks[0][0] if order_book.asks else initial_price,
                 price_history=[],
@@ -455,7 +462,7 @@ class MarketEnvironment:
 
             # Initialize regime schedule
             self._regime_schedule[symbol] = (
-                MarketRegime.SIDEWAYS,
+                initial_regime,
                 self._rng.integers(*self.regime_duration_range),
             )
 
@@ -509,7 +516,16 @@ class MarketEnvironment:
 
             # Update regime if needed
             current_regime, remaining_duration = self._regime_schedule[symbol]
-            if remaining_duration <= 0:
+            if self.forced_regime is not None:
+                self._regime_schedule[symbol] = (
+                    self.forced_regime,
+                    self._rng.integers(*self.regime_duration_range),
+                )
+                state.regime = self.forced_regime
+                state.volatility = (
+                    self.base_volatility * self.REGIME_VOLATILITY[self.forced_regime]
+                )
+            elif remaining_duration <= 0:
                 new_regime = self._transition_regime(current_regime)
                 new_duration = self._rng.integers(*self.regime_duration_range)
                 self._regime_schedule[symbol] = (new_regime, new_duration)
@@ -731,6 +747,7 @@ class MarketEnvironment:
         for symbol in self.symbols:
             initial_price = self.initial_prices.get(symbol, 100.0)
             order_book = L2OrderBook(symbol, initial_price)
+            initial_regime = self.forced_regime or MarketRegime.SIDEWAYS
 
             self.states[symbol] = MarketState(
                 symbol=symbol,
@@ -740,8 +757,8 @@ class MarketEnvironment:
                 low=initial_price,
                 volume=0.0,
                 timestamp=datetime.utcnow(),
-                regime=MarketRegime.SIDEWAYS,
-                volatility=self.base_volatility,
+                regime=initial_regime,
+                volatility=self.base_volatility * self.REGIME_VOLATILITY[initial_regime],
                 bid=order_book.bids[0][0] if order_book.bids else initial_price,
                 ask=order_book.asks[0][0] if order_book.asks else initial_price,
                 price_history=[],
@@ -749,7 +766,7 @@ class MarketEnvironment:
             )
 
             self._regime_schedule[symbol] = (
-                MarketRegime.SIDEWAYS,
+                initial_regime,
                 self._rng.integers(*self.regime_duration_range),
             )
 

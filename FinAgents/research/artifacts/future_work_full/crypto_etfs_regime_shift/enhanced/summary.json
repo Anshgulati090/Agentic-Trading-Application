@@ -1,0 +1,28 @@
+{
+  "summary": "Research-Grade FinAgents Report\nTotal return: 0.06%\nSharpe ratio: -678.59\nMax drawdown: 0.00%",
+  "financial_metrics": {
+    "total_return": 0.0005937569011465893,
+    "annualized_return": 0.0005939308226585727,
+    "sharpe_ratio": -678.589533028278,
+    "sortino_ratio": -5873.473758624992,
+    "calmar_ratio": 131.75447021328003,
+    "information_ratio": 0.0,
+    "omega_ratio": 39.73752410932041,
+    "max_drawdown": 4.5078608846981504e-06,
+    "volatility": 5.807080890711482e-05,
+    "win_rate": 0.0,
+    "profit_factor": 0.0,
+    "cost_adjusted_return": 0.0005937569011465893,
+    "num_trades": 0
+  },
+  "ai_metrics": {
+    "decision_accuracy": 1.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "confidence_calibration_ece": 0.0,
+    "explainability_score": 0.0,
+    "learning_rate_metric": 0.0,
+    "agent_agreement_rate": 0.0
+  }
+}

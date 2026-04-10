@@ -1,58 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { api, SYMBOLS } from '../services/api';
-
-// Stable mock baseline — doesn't re-randomize on every render
-const MOCK_BASES = { AAPL: 189.5, MSFT: 378.2, GOOGL: 141.8, AMZN: 182.4, TSLA: 248.7, META: 503.1, NVDA: 875.4 };
-
-function makeMock(sym, prev) {
-  const base  = prev?.price ?? MOCK_BASES[sym] ?? 100;
-  const delta = (Math.random() - 0.48) * base * 0.008;
-  const price = +(base + delta).toFixed(2);
-  return { price, change: +(price - (MOCK_BASES[sym] ?? price)).toFixed(2), changePct: delta / base };
-}
-
-function normalizeQuote(payload) {
-  const quote = payload?.data || payload || {};
-  return {
-    symbol: quote.symbol,
-    price: Number(quote.price),
-    change: Number(quote.change),
-    changePct: Number(quote.change_pct ?? quote.changePct),
-  };
-}
+import { useState } from 'react';
+import { SYMBOLS } from '../services/api';
+import { formatPrice } from '../utils/format';
+import { useLiveMarket } from '../hooks/useLiveMarket';
 
 export default function MarketTicker({ onSelectSymbol }) {
-  const [prices,   setPrices]  = useState({});
-  const [loading,  setLoading] = useState(true);
+  const liveTicks = useLiveMarket();
   const [selected, setSelected] = useState(null);
-  const prevRef = useRef({});
-
-  const fetchPrices = useCallback(async () => {
-    const results = await Promise.allSettled(
-      SYMBOLS.map((sym) => api.getMarketPrice(sym).then((payload) => [sym, normalizeQuote(payload)]))
-    );
-    setPrices((old) => {
-      const next = { ...old };
-      results.forEach((r) => {
-        if (r.status === 'fulfilled') {
-          const [sym, data] = r.value;
-          next[sym] = Number.isFinite(data?.price) ? data : makeMock(sym, old[sym]);
-        } else {
-          const sym = SYMBOLS[results.indexOf(r)];
-          next[sym] = makeMock(sym, old[sym]);
-        }
-      });
-      prevRef.current = next;
-      return next;
-    });
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    fetchPrices();
-    const t = setInterval(fetchPrices, 6000);
-    return () => clearInterval(t);
-  }, [fetchPrices]);
 
   const handleSelect = (sym) => {
     setSelected(sym);
@@ -62,9 +15,11 @@ export default function MarketTicker({ onSelectSymbol }) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 2xl:grid-cols-7 gap-2.5">
       {SYMBOLS.map((sym) => {
-        const p = prices[sym];
+        const p = liveTicks[sym];
         const isPos = (p?.change ?? 0) >= 0;
         const isSelected = selected === sym;
+        const loading = !p;
+
         return (
           <button
             key={sym}
@@ -75,13 +30,19 @@ export default function MarketTicker({ onSelectSymbol }) {
                 : 'border-zinc-800 bg-zinc-900/60 hover:border-zinc-600 hover:bg-zinc-900/80'
             }`}
           >
-            <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">{sym}</span>
-            {loading && !p ? (
+            <div className="flex justify-between items-center w-full">
+              <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">{sym}</span>
+              {p?.source === 'websocket_engine' && (
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
+              )}
+            </div>
+            
+            {loading ? (
               <span className="h-4 w-16 bg-zinc-800 animate-pulse rounded mt-1" />
             ) : (
               <>
                 <span className="text-sm font-light tabular-nums text-zinc-100 mt-0.5">
-                  ${Number(p?.price ?? 0).toFixed(2)}
+                  {formatPrice(p?.price, sym)}
                 </span>
                 {p?.change != null && (
                   <span className={`text-[10px] font-mono tabular-nums ${isPos ? 'text-emerald-400' : 'text-red-400'}`}>

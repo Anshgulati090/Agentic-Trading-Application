@@ -1,0 +1,23 @@
+{
+  "scenario": "us_equities_medium_horizon",
+  "variant": "enhanced",
+  "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\enhanced",
+  "total_return_pct": 0.0003589540622616187,
+  "final_portfolio_value": 1000358.9540622616,
+  "sharpe_ratio": -325.151610504487,
+  "max_drawdown": 1.2069156899194975e-05,
+  "num_decisions": 309,
+  "num_snapshots": 25,
+  "config": {
+    "symbols": [
+      "AAPL",
+      "MSFT",
+      "GOOG"
+    ],
+    "horizon_steps": 120,
+    "gating_enabled": true,
+    "memory_enabled": true,
+    "messaging_enabled": true,
+    "broader_signals_enabled": true
+  }
+}

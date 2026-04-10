@@ -27,7 +27,7 @@ function AppLayout() {
   const isFullPage = FULL_PAGE_ROUTES.includes(location.pathname);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base, #040c12)', color: '#e8f4ff' }}>
       {!isFullPage && (
         <>
           <Navbar />
@@ -35,7 +35,9 @@ function AppLayout() {
         </>
       )}
 
-      <main className={isFullPage ? '' : 'max-w-[1820px] mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-7'}>
+      <main className={isFullPage ? '' : ''} style={isFullPage ? {} : {
+        maxWidth: 1600, margin: '0 auto', padding: '20px 20px 40px',
+      }}>
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingPremium />} />
@@ -49,15 +51,15 @@ function AppLayout() {
 
           {/* Dashboard & Portfolio */}
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/portfolio" element={<ProtectedRoute><Portfolio /></ProtectedRoute>} />
+          <Route path="/portfolio" element={<Portfolio />} />
           <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
           {/* 404 */}
           <Route path="*" element={
-            <div className="flex flex-col items-center justify-center min-h-[50vh] gap-4 text-center">
-              <div className="text-6xl font-light font-mono text-zinc-800">404</div>
-              <p className="text-zinc-500">Page not found</p>
-              <a href="/" className="btn-primary text-sm">Go Home</a>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', gap: 16, textAlign: 'center' }}>
+              <div style={{ fontSize: 80, fontFamily: 'JetBrains Mono, monospace', color: 'rgba(0,183,255,0.1)', fontWeight: 700 }}>404</div>
+              <p style={{ color: '#4d7a96' }}>Page not found</p>
+              <a href="/" className="btn-primary" style={{ textDecoration: 'none' }}>Go Home</a>
             </div>
           } />
         </Routes>

@@ -1,0 +1,9 @@
+{
+  "coordinator": {
+    "total_pnl": 115.74085617173235,
+    "num_trades": 303,
+    "win_rate": 0.22442244224422442,
+    "avg_pnl_per_trade": 0.38198302366908365,
+    "contribution_pct": 1.0
+  }
+}

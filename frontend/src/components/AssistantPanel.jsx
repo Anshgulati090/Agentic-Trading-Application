@@ -34,7 +34,13 @@ export default function AssistantPanel() {
     setLoading(true);
     try {
       const response = await api.askAssistant(content);
-      setMessages((prev) => [...prev, { role: 'assistant', content: response.reply }]);
+      // response may be null or missing .reply if backend is offline
+      const reply =
+        response?.reply ||
+        response?.answer ||
+        response?.message ||
+        'The AI assistant is currently unavailable. Try again in a moment.';
+      setMessages((prev) => [...prev, { role: 'assistant', content: reply }]);
     } catch (error) {
       setMessages((prev) => [
         ...prev,

@@ -114,11 +114,12 @@ export function usePriceStream(symbol, enabled = true) {
   const derivedMetrics = useCallback(() => {
     if (!priceData) return null;
 
-    const isLive = priceData._source === 'yfinance_realtime';
-    const isCached = priceData._source === 'cached';
+    const source = priceData._source || priceData.source || 'unknown';
+    const isLive = source === 'ws_stream' || source === 'live' || source === 'binance';
+    const isCached = source === 'cached' || source === 'cache_fallback';
     const hasError = priceData.error != null;
     const age = Date.now() - (priceData._receivedAt || 0);
-    const isStale = age > 10000; // Older than 10 seconds
+    const isStale = age > 15000; // Older than 15 seconds
 
     return {
       ...priceData,
@@ -137,6 +138,6 @@ export function usePriceStream(symbol, enabled = true) {
     connect,
     disconnect,
     reconnect,
-    isLive: priceData?._source === 'yfinance_realtime',
+    isLive: derivedMetrics()?.isLive || false,
   };
 }

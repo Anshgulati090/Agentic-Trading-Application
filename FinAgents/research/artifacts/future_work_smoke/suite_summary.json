@@ -1,0 +1,51 @@
+{
+  "generated_at": "2026-04-07T07:52:03.281532",
+  "scenarios": {
+    "smoke_scenario": {
+      "enhanced": {
+        "scenario": "smoke_scenario",
+        "variant": "enhanced",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_smoke\\smoke_scenario\\enhanced",
+        "total_return_pct": 3.238491697702557e-07,
+        "final_portfolio_value": 1000000.3238491698,
+        "sharpe_ratio": -29564.169918139945,
+        "max_drawdown": 8.60578178225205e-12,
+        "num_decisions": 4,
+        "num_snapshots": 2,
+        "config": {
+          "symbols": [
+            "AAPL"
+          ],
+          "horizon_steps": 5,
+          "gating_enabled": true,
+          "memory_enabled": true,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        }
+      }
+    }
+  },
+  "runs": [
+    {
+      "scenario": "smoke_scenario",
+      "variant": "enhanced",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_smoke\\smoke_scenario\\enhanced",
+      "total_return_pct": 3.238491697702557e-07,
+      "final_portfolio_value": 1000000.3238491698,
+      "sharpe_ratio": -29564.169918139945,
+      "max_drawdown": 8.60578178225205e-12,
+      "num_decisions": 4,
+      "num_snapshots": 2,
+      "config": {
+        "symbols": [
+          "AAPL"
+        ],
+        "horizon_steps": 5,
+        "gating_enabled": true,
+        "memory_enabled": true,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    }
+  ]
+}

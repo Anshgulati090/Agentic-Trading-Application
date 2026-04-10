@@ -100,37 +100,14 @@ def _store_backtest_result(db: Session, symbol: str, strategy_name: str, metrics
     return int(inserted_pk[0])
 
 
-@router.post("/backtest")
+@router.post("/backtest", status_code=501)
 def run_backtest(payload: BacktestRequest, db: Session = Depends(get_db)):
     """
-    Run a simple synthetic backtest for the given symbol and strategy, store
-    the result in the backtest_results table, and return key performance
-    statistics to the caller.
+    Explicitly reject backtests until the real historical execution engine is built, 
+    preventing fabricated strategy metrics from being consumed downstream.
     """
-    try:
-        metrics = _simulate_dummy_backtest(
-            symbol=payload.symbol, strategy_name=payload.strategy_name
-        )
-
-        backtest_id = _store_backtest_result(
-            db=db,
-            symbol=payload.symbol,
-            strategy_name=payload.strategy_name,
-            metrics=metrics,
-        )
-    except HTTPException:
-        # Re-raise explicit HTTP errors unchanged.
-        raise
-    except Exception as exc:
-        # Surface any unexpected error as an internal server error.
-        raise HTTPException(status_code=500, detail=str(exc))
-
-    response = BacktestMetrics(
-        backtest_id=backtest_id,
-        sharpe=metrics["sharpe"],
-        max_drawdown=metrics["max_drawdown"],
-        total_return=metrics["total_return"],
+    raise HTTPException(
+        status_code=501,
+        detail="Historical backtesting engine is pending implementation. Synthetic backtests disabled."
     )
-
-    return asdict(response)
 

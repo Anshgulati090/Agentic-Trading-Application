@@ -1,0 +1,824 @@
+{
+  "generated_at": "2026-04-07T08:01:54.684831",
+  "scenarios": {
+    "us_equities_medium_horizon": {
+      "enhanced": {
+        "scenario": "us_equities_medium_horizon",
+        "variant": "enhanced",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\enhanced",
+        "total_return_pct": 0.0003589540622616187,
+        "final_portfolio_value": 1000358.9540622616,
+        "sharpe_ratio": -325.151610504487,
+        "max_drawdown": 1.2069156899194975e-05,
+        "num_decisions": 309,
+        "num_snapshots": 25,
+        "config": {
+          "symbols": [
+            "AAPL",
+            "MSFT",
+            "GOOG"
+          ],
+          "horizon_steps": 120,
+          "gating_enabled": true,
+          "memory_enabled": true,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        }
+      },
+      "no_gating": {
+        "scenario": "us_equities_medium_horizon",
+        "variant": "no_gating",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\no_gating",
+        "total_return_pct": 0.0003589232892023865,
+        "final_portfolio_value": 1000358.9232892024,
+        "sharpe_ratio": -324.8272297113034,
+        "max_drawdown": 1.2110156278130721e-05,
+        "num_decisions": 309,
+        "num_snapshots": 25,
+        "config": {
+          "symbols": [
+            "AAPL",
+            "MSFT",
+            "GOOG"
+          ],
+          "horizon_steps": 120,
+          "gating_enabled": false,
+          "memory_enabled": true,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        },
+        "vs_enhanced": {
+          "summary": "The enhanced system outperformed the base system with a 0.0% improvement in total return. Risk-adjusted returns improved with Sharpe ratio increasing from 6.24 to 6.24 (0.1% improvement). The improvement is not statistically significant at the 5% level.",
+          "improvements": {
+            "total_return": 0.008573714818161611,
+            "sharpe_ratio": 0.10860603572436762,
+            "sortino_ratio": 1.261749364228398,
+            "max_drawdown": 0.3385536780594641,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "calmar_ratio": 0.34830659767497846
+          },
+          "statistical_tests": {
+            "returns": {
+              "paired_t_test": {
+                "t_stat": 0.16894218528687172,
+                "p_value": 0.8658421158979617,
+                "significant": false
+              },
+              "bootstrap": {
+                "mean_diff": 2.1022609662209364e-10,
+                "ci_lower": -3.055053366504281e-09,
+                "ci_upper": 2.9204567152967415e-09,
+                "significant": false
+              }
+            }
+          }
+        }
+      },
+      "no_memory": {
+        "scenario": "us_equities_medium_horizon",
+        "variant": "no_memory",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\no_memory",
+        "total_return_pct": 0.0003589540622616187,
+        "final_portfolio_value": 1000358.9540622616,
+        "sharpe_ratio": -325.151610504487,
+        "max_drawdown": 1.2069156899194975e-05,
+        "num_decisions": 309,
+        "num_snapshots": 25,
+        "config": {
+          "symbols": [
+            "AAPL",
+            "MSFT",
+            "GOOG"
+          ],
+          "horizon_steps": 120,
+          "gating_enabled": true,
+          "memory_enabled": false,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        },
+        "vs_enhanced": {
+          "summary": "The enhanced system underperformed the base system by 0.0% in total return. The improvement is not statistically significant at the 5% level.",
+          "improvements": {
+            "total_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "max_drawdown": -0.0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "calmar_ratio": 0.0
+          },
+          "statistical_tests": {
+            "returns": {
+              "paired_t_test": {
+                "t_stat": 0.0,
+                "p_value": 1.0,
+                "significant": false
+              },
+              "bootstrap": {
+                "mean_diff": 0.0,
+                "ci_lower": 0.0,
+                "ci_upper": 0.0,
+                "significant": false
+              }
+            }
+          }
+        }
+      },
+      "no_messaging": {
+        "scenario": "us_equities_medium_horizon",
+        "variant": "no_messaging",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\no_messaging",
+        "total_return_pct": 0.002631362403191044,
+        "final_portfolio_value": 1002631.362403191,
+        "sharpe_ratio": -8.417527691861892,
+        "max_drawdown": 0.0014571582409901845,
+        "num_decisions": 1228,
+        "num_snapshots": 25,
+        "config": {
+          "symbols": [
+            "AAPL",
+            "MSFT",
+            "GOOG"
+          ],
+          "horizon_steps": 120,
+          "gating_enabled": true,
+          "memory_enabled": true,
+          "messaging_enabled": false,
+          "broader_signals_enabled": true
+        },
+        "vs_enhanced": {
+          "summary": "The enhanced system underperformed the base system by 86.4% in total return. Risk-adjusted returns improved with Sharpe ratio increasing from 1.35 to 6.24 (362.7% improvement). The improvement is not statistically significant at the 5% level.",
+          "improvements": {
+            "total_return": -86.35862312898,
+            "sharpe_ratio": 362.67170338156666,
+            "sortino_ratio": 1561.0243490087787,
+            "max_drawdown": 99.17173327099584,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "calmar_ratio": 1546.9787320107903
+          },
+          "statistical_tests": {
+            "returns": {
+              "paired_t_test": {
+                "t_stat": -0.8152932540119262,
+                "p_value": 0.4149043565124497,
+                "significant": false
+              },
+              "bootstrap": {
+                "mean_diff": -1.936617876364579e-05,
+                "ci_lower": -7.228540780339461e-05,
+                "ci_upper": 2.1436305610580173e-05,
+                "significant": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "diversified_etfs_long_horizon": {
+      "enhanced": {
+        "scenario": "diversified_etfs_long_horizon",
+        "variant": "enhanced",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\diversified_etfs_long_horizon\\enhanced",
+        "total_return_pct": 0.001594208086541854,
+        "final_portfolio_value": 1001594.2080865419,
+        "sharpe_ratio": -263.7645178127493,
+        "max_drawdown": 2.4883375287679034e-05,
+        "num_decisions": 1076,
+        "num_snapshots": 52,
+        "config": {
+          "symbols": [
+            "SPY",
+            "QQQ",
+            "IWM",
+            "VTI",
+            "VXUS"
+          ],
+          "horizon_steps": 252,
+          "gating_enabled": true,
+          "memory_enabled": true,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        }
+      },
+      "no_gating": {
+        "scenario": "diversified_etfs_long_horizon",
+        "variant": "no_gating",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\diversified_etfs_long_horizon\\no_gating",
+        "total_return_pct": 0.001594208086541854,
+        "final_portfolio_value": 1001594.2080865419,
+        "sharpe_ratio": -263.7645178127493,
+        "max_drawdown": 2.4883375287679034e-05,
+        "num_decisions": 1076,
+        "num_snapshots": 52,
+        "config": {
+          "symbols": [
+            "SPY",
+            "QQQ",
+            "IWM",
+            "VTI",
+            "VXUS"
+          ],
+          "horizon_steps": 252,
+          "gating_enabled": false,
+          "memory_enabled": true,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        },
+        "vs_enhanced": {
+          "summary": "The enhanced system underperformed the base system by 0.0% in total return. The improvement is not statistically significant at the 5% level.",
+          "improvements": {
+            "total_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "max_drawdown": -0.0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "calmar_ratio": 0.0
+          },
+          "statistical_tests": {
+            "returns": {
+              "paired_t_test": {
+                "t_stat": 0.0,
+                "p_value": 1.0,
+                "significant": false
+              },
+              "bootstrap": {
+                "mean_diff": 0.0,
+                "ci_lower": 0.0,
+                "ci_upper": 0.0,
+                "significant": false
+              }
+            }
+          }
+        }
+      },
+      "no_memory": {
+        "scenario": "diversified_etfs_long_horizon",
+        "variant": "no_memory",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\diversified_etfs_long_horizon\\no_memory",
+        "total_return_pct": 0.001594208086541854,
+        "final_portfolio_value": 1001594.2080865419,
+        "sharpe_ratio": -263.7645178127493,
+        "max_drawdown": 2.4883375287679034e-05,
+        "num_decisions": 1076,
+        "num_snapshots": 52,
+        "config": {
+          "symbols": [
+            "SPY",
+            "QQQ",
+            "IWM",
+            "VTI",
+            "VXUS"
+          ],
+          "horizon_steps": 252,
+          "gating_enabled": true,
+          "memory_enabled": false,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        },
+        "vs_enhanced": {
+          "summary": "The enhanced system underperformed the base system by 0.0% in total return. The improvement is not statistically significant at the 5% level.",
+          "improvements": {
+            "total_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "max_drawdown": -0.0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "calmar_ratio": 0.0
+          },
+          "statistical_tests": {
+            "returns": {
+              "paired_t_test": {
+                "t_stat": 0.0,
+                "p_value": 1.0,
+                "significant": false
+              },
+              "bootstrap": {
+                "mean_diff": 0.0,
+                "ci_lower": 0.0,
+                "ci_upper": 0.0,
+                "significant": false
+              }
+            }
+          }
+        }
+      },
+      "no_messaging": {
+        "scenario": "diversified_etfs_long_horizon",
+        "variant": "no_messaging",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\diversified_etfs_long_horizon\\no_messaging",
+        "total_return_pct": 0.005824251727237715,
+        "final_portfolio_value": 1005824.2517272377,
+        "sharpe_ratio": -5.297745625320762,
+        "max_drawdown": 0.003250907598912217,
+        "num_decisions": 4239,
+        "num_snapshots": 52,
+        "config": {
+          "symbols": [
+            "SPY",
+            "QQQ",
+            "IWM",
+            "VTI",
+            "VXUS"
+          ],
+          "horizon_steps": 252,
+          "gating_enabled": true,
+          "memory_enabled": true,
+          "messaging_enabled": false,
+          "broader_signals_enabled": true
+        },
+        "vs_enhanced": {
+          "summary": "The enhanced system underperformed the base system by 72.6% in total return. Risk-adjusted returns improved with Sharpe ratio increasing from 0.90 to 10.94 (1110.7% improvement). The improvement is not statistically significant at the 5% level.",
+          "improvements": {
+            "total_return": -72.62810466988617,
+            "sharpe_ratio": 1110.738190633349,
+            "sortino_ratio": 2392.3463059709647,
+            "max_drawdown": 99.23457143796222,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "calmar_ratio": 3476.022203462356
+          },
+          "statistical_tests": {
+            "returns": {
+              "paired_t_test": {
+                "t_stat": -0.6618541652017971,
+                "p_value": 0.5080645596132565,
+                "significant": false
+              },
+              "bootstrap": {
+                "mean_diff": -1.6935942059063634e-05,
+                "ci_lower": -7.141413399183604e-05,
+                "ci_upper": 3.469096514546983e-05,
+                "significant": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "crypto_etfs_regime_shift": {
+      "enhanced": {
+        "scenario": "crypto_etfs_regime_shift",
+        "variant": "enhanced",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\enhanced",
+        "total_return_pct": 0.0005939308226600988,
+        "final_portfolio_value": 1000593.9308226601,
+        "sharpe_ratio": -678.589533028278,
+        "max_drawdown": 4.5078608846981504e-06,
+        "num_decisions": 644,
+        "num_snapshots": 52,
+        "config": {
+          "symbols": [
+            "IBIT",
+            "FBTC",
+            "GBTC"
+          ],
+          "horizon_steps": 252,
+          "gating_enabled": true,
+          "memory_enabled": true,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        }
+      },
+      "no_gating": {
+        "scenario": "crypto_etfs_regime_shift",
+        "variant": "no_gating",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\no_gating",
+        "total_return_pct": 0.00059332717692398,
+        "final_portfolio_value": 1000593.327176924,
+        "sharpe_ratio": -678.4800859859209,
+        "max_drawdown": 4.507863605693895e-06,
+        "num_decisions": 644,
+        "num_snapshots": 52,
+        "config": {
+          "symbols": [
+            "IBIT",
+            "FBTC",
+            "GBTC"
+          ],
+          "horizon_steps": 252,
+          "gating_enabled": false,
+          "memory_enabled": true,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        },
+        "vs_enhanced": {
+          "summary": "The enhanced system outperformed the base system with a 0.1% improvement in total return. Risk-adjusted returns improved with Sharpe ratio increasing from 10.21 to 10.22 (0.1% improvement). The improvement is not statistically significant at the 5% level.",
+          "improvements": {
+            "total_return": 0.10173910105523204,
+            "sharpe_ratio": 0.11938899990486891,
+            "sortino_ratio": 0.08285571573108416,
+            "max_drawdown": 6.036109321078485e-05,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "calmar_ratio": 0.10179952359575004
+          },
+          "statistical_tests": {
+            "returns": {
+              "paired_t_test": {
+                "t_stat": 1.3628700697449507,
+                "p_value": 0.17292358531653784,
+                "significant": false
+              },
+              "bootstrap": {
+                "mean_diff": 2.3469993964908365e-09,
+                "ci_lower": -2.6689189835195257e-11,
+                "ci_upper": 6.319478421145264e-09,
+                "significant": false
+              }
+            }
+          }
+        }
+      },
+      "no_memory": {
+        "scenario": "crypto_etfs_regime_shift",
+        "variant": "no_memory",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\no_memory",
+        "total_return_pct": 0.0005939308226600988,
+        "final_portfolio_value": 1000593.9308226601,
+        "sharpe_ratio": -678.589533028278,
+        "max_drawdown": 4.5078608846981504e-06,
+        "num_decisions": 644,
+        "num_snapshots": 52,
+        "config": {
+          "symbols": [
+            "IBIT",
+            "FBTC",
+            "GBTC"
+          ],
+          "horizon_steps": 252,
+          "gating_enabled": true,
+          "memory_enabled": false,
+          "messaging_enabled": true,
+          "broader_signals_enabled": true
+        },
+        "vs_enhanced": {
+          "summary": "The enhanced system underperformed the base system by 0.0% in total return. The improvement is not statistically significant at the 5% level.",
+          "improvements": {
+            "total_return": 0.0,
+            "sharpe_ratio": 0.0,
+            "sortino_ratio": 0.0,
+            "max_drawdown": -0.0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "calmar_ratio": 0.0
+          },
+          "statistical_tests": {
+            "returns": {
+              "paired_t_test": {
+                "t_stat": 0.0,
+                "p_value": 1.0,
+                "significant": false
+              },
+              "bootstrap": {
+                "mean_diff": 0.0,
+                "ci_lower": 0.0,
+                "ci_upper": 0.0,
+                "significant": false
+              }
+            }
+          }
+        }
+      },
+      "no_messaging": {
+        "scenario": "crypto_etfs_regime_shift",
+        "variant": "no_messaging",
+        "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\no_messaging",
+        "total_return_pct": 0.005053219086430617,
+        "final_portfolio_value": 1005053.2190864306,
+        "sharpe_ratio": -12.96952532976695,
+        "max_drawdown": 0.001468979285063369,
+        "num_decisions": 2553,
+        "num_snapshots": 52,
+        "config": {
+          "symbols": [
+            "IBIT",
+            "FBTC",
+            "GBTC"
+          ],
+          "horizon_steps": 252,
+          "gating_enabled": true,
+          "memory_enabled": true,
+          "messaging_enabled": false,
+          "broader_signals_enabled": true
+        },
+        "vs_enhanced": {
+          "summary": "The enhanced system underperformed the base system by 88.2% in total return. Risk-adjusted returns improved with Sharpe ratio increasing from 1.87 to 10.22 (446.3% improvement). The improvement is not statistically significant at the 5% level.",
+          "improvements": {
+            "total_return": -88.24648580436622,
+            "sharpe_ratio": 446.3313531374152,
+            "sortino_ratio": 2451.334679124833,
+            "max_drawdown": 99.6931297172952,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "calmar_ratio": 3730.1246024984744
+          },
+          "statistical_tests": {
+            "returns": {
+              "paired_t_test": {
+                "t_stat": -1.6598032878864883,
+                "p_value": 0.09695399561321594,
+                "significant": false
+              },
+              "bootstrap": {
+                "mean_diff": -1.7610669075042927e-05,
+                "ci_lower": -4.158801109762982e-05,
+                "ci_upper": 9.08263842854983e-07,
+                "significant": false
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "runs": [
+    {
+      "scenario": "us_equities_medium_horizon",
+      "variant": "enhanced",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\enhanced",
+      "total_return_pct": 0.0003589540622616187,
+      "final_portfolio_value": 1000358.9540622616,
+      "sharpe_ratio": -325.151610504487,
+      "max_drawdown": 1.2069156899194975e-05,
+      "num_decisions": 309,
+      "num_snapshots": 25,
+      "config": {
+        "symbols": [
+          "AAPL",
+          "MSFT",
+          "GOOG"
+        ],
+        "horizon_steps": 120,
+        "gating_enabled": true,
+        "memory_enabled": true,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "us_equities_medium_horizon",
+      "variant": "no_gating",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\no_gating",
+      "total_return_pct": 0.0003589232892023865,
+      "final_portfolio_value": 1000358.9232892024,
+      "sharpe_ratio": -324.8272297113034,
+      "max_drawdown": 1.2110156278130721e-05,
+      "num_decisions": 309,
+      "num_snapshots": 25,
+      "config": {
+        "symbols": [
+          "AAPL",
+          "MSFT",
+          "GOOG"
+        ],
+        "horizon_steps": 120,
+        "gating_enabled": false,
+        "memory_enabled": true,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "us_equities_medium_horizon",
+      "variant": "no_memory",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\no_memory",
+      "total_return_pct": 0.0003589540622616187,
+      "final_portfolio_value": 1000358.9540622616,
+      "sharpe_ratio": -325.151610504487,
+      "max_drawdown": 1.2069156899194975e-05,
+      "num_decisions": 309,
+      "num_snapshots": 25,
+      "config": {
+        "symbols": [
+          "AAPL",
+          "MSFT",
+          "GOOG"
+        ],
+        "horizon_steps": 120,
+        "gating_enabled": true,
+        "memory_enabled": false,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "us_equities_medium_horizon",
+      "variant": "no_messaging",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\us_equities_medium_horizon\\no_messaging",
+      "total_return_pct": 0.002631362403191044,
+      "final_portfolio_value": 1002631.362403191,
+      "sharpe_ratio": -8.417527691861892,
+      "max_drawdown": 0.0014571582409901845,
+      "num_decisions": 1228,
+      "num_snapshots": 25,
+      "config": {
+        "symbols": [
+          "AAPL",
+          "MSFT",
+          "GOOG"
+        ],
+        "horizon_steps": 120,
+        "gating_enabled": true,
+        "memory_enabled": true,
+        "messaging_enabled": false,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "diversified_etfs_long_horizon",
+      "variant": "enhanced",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\diversified_etfs_long_horizon\\enhanced",
+      "total_return_pct": 0.001594208086541854,
+      "final_portfolio_value": 1001594.2080865419,
+      "sharpe_ratio": -263.7645178127493,
+      "max_drawdown": 2.4883375287679034e-05,
+      "num_decisions": 1076,
+      "num_snapshots": 52,
+      "config": {
+        "symbols": [
+          "SPY",
+          "QQQ",
+          "IWM",
+          "VTI",
+          "VXUS"
+        ],
+        "horizon_steps": 252,
+        "gating_enabled": true,
+        "memory_enabled": true,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "diversified_etfs_long_horizon",
+      "variant": "no_gating",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\diversified_etfs_long_horizon\\no_gating",
+      "total_return_pct": 0.001594208086541854,
+      "final_portfolio_value": 1001594.2080865419,
+      "sharpe_ratio": -263.7645178127493,
+      "max_drawdown": 2.4883375287679034e-05,
+      "num_decisions": 1076,
+      "num_snapshots": 52,
+      "config": {
+        "symbols": [
+          "SPY",
+          "QQQ",
+          "IWM",
+          "VTI",
+          "VXUS"
+        ],
+        "horizon_steps": 252,
+        "gating_enabled": false,
+        "memory_enabled": true,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "diversified_etfs_long_horizon",
+      "variant": "no_memory",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\diversified_etfs_long_horizon\\no_memory",
+      "total_return_pct": 0.001594208086541854,
+      "final_portfolio_value": 1001594.2080865419,
+      "sharpe_ratio": -263.7645178127493,
+      "max_drawdown": 2.4883375287679034e-05,
+      "num_decisions": 1076,
+      "num_snapshots": 52,
+      "config": {
+        "symbols": [
+          "SPY",
+          "QQQ",
+          "IWM",
+          "VTI",
+          "VXUS"
+        ],
+        "horizon_steps": 252,
+        "gating_enabled": true,
+        "memory_enabled": false,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "diversified_etfs_long_horizon",
+      "variant": "no_messaging",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\diversified_etfs_long_horizon\\no_messaging",
+      "total_return_pct": 0.005824251727237715,
+      "final_portfolio_value": 1005824.2517272377,
+      "sharpe_ratio": -5.297745625320762,
+      "max_drawdown": 0.003250907598912217,
+      "num_decisions": 4239,
+      "num_snapshots": 52,
+      "config": {
+        "symbols": [
+          "SPY",
+          "QQQ",
+          "IWM",
+          "VTI",
+          "VXUS"
+        ],
+        "horizon_steps": 252,
+        "gating_enabled": true,
+        "memory_enabled": true,
+        "messaging_enabled": false,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "crypto_etfs_regime_shift",
+      "variant": "enhanced",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\enhanced",
+      "total_return_pct": 0.0005939308226600988,
+      "final_portfolio_value": 1000593.9308226601,
+      "sharpe_ratio": -678.589533028278,
+      "max_drawdown": 4.5078608846981504e-06,
+      "num_decisions": 644,
+      "num_snapshots": 52,
+      "config": {
+        "symbols": [
+          "IBIT",
+          "FBTC",
+          "GBTC"
+        ],
+        "horizon_steps": 252,
+        "gating_enabled": true,
+        "memory_enabled": true,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "crypto_etfs_regime_shift",
+      "variant": "no_gating",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\no_gating",
+      "total_return_pct": 0.00059332717692398,
+      "final_portfolio_value": 1000593.327176924,
+      "sharpe_ratio": -678.4800859859209,
+      "max_drawdown": 4.507863605693895e-06,
+      "num_decisions": 644,
+      "num_snapshots": 52,
+      "config": {
+        "symbols": [
+          "IBIT",
+          "FBTC",
+          "GBTC"
+        ],
+        "horizon_steps": 252,
+        "gating_enabled": false,
+        "memory_enabled": true,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "crypto_etfs_regime_shift",
+      "variant": "no_memory",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\no_memory",
+      "total_return_pct": 0.0005939308226600988,
+      "final_portfolio_value": 1000593.9308226601,
+      "sharpe_ratio": -678.589533028278,
+      "max_drawdown": 4.5078608846981504e-06,
+      "num_decisions": 644,
+      "num_snapshots": 52,
+      "config": {
+        "symbols": [
+          "IBIT",
+          "FBTC",
+          "GBTC"
+        ],
+        "horizon_steps": 252,
+        "gating_enabled": true,
+        "memory_enabled": false,
+        "messaging_enabled": true,
+        "broader_signals_enabled": true
+      }
+    },
+    {
+      "scenario": "crypto_etfs_regime_shift",
+      "variant": "no_messaging",
+      "output_dir": "FinAgents\\research\\artifacts\\future_work_full\\crypto_etfs_regime_shift\\no_messaging",
+      "total_return_pct": 0.005053219086430617,
+      "final_portfolio_value": 1005053.2190864306,
+      "sharpe_ratio": -12.96952532976695,
+      "max_drawdown": 0.001468979285063369,
+      "num_decisions": 2553,
+      "num_snapshots": 52,
+      "config": {
+        "symbols": [
+          "IBIT",
+          "FBTC",
+          "GBTC"
+        ],
+        "horizon_steps": 252,
+        "gating_enabled": true,
+        "memory_enabled": true,
+        "messaging_enabled": false,
+        "broader_signals_enabled": true
+      }
+    }
+  ]
+}

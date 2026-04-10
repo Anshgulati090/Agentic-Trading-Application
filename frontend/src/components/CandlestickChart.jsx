@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, getMockPriceHistory } from '../services/api';
+import { formatPrice } from '../utils/format';
+import { safeArray } from '../utils/safeApi';
 
 const PERIODS = ['1D', '1W', '1M', '3M', '1Y'];
 const PERIOD_TO_DAYS = { '1D': 1, '1W': 7, '1M': 30, '3M': 90, '1Y': 365 };
 
-function normalizeSeries(rows = []) {
+function normalizeSeries(raw) {
+  const rows = safeArray(raw);
   return rows
     .map((row, index) => ({
       index,
@@ -20,23 +23,23 @@ function normalizeSeries(rows = []) {
     .sort((a, b) => a.time - b.time);
 }
 
-function ChartTooltip({ point }) {
+function ChartTooltip({ point, symbol }) {
   if (!point) return null;
 
   return (
     <div className="absolute left-3 top-3 rounded-lg border border-zinc-700/80 bg-zinc-950/95 px-3 py-2 text-[11px] font-mono shadow-lg shadow-black/30">
       <div className="text-zinc-500">{point.label}</div>
       <div className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1">
-        <span className="text-zinc-600">O</span><span className="text-zinc-200">${point.open.toFixed(2)}</span>
-        <span className="text-zinc-600">H</span><span className="text-emerald-400">${point.high.toFixed(2)}</span>
-        <span className="text-zinc-600">L</span><span className="text-red-400">${point.low.toFixed(2)}</span>
-        <span className="text-zinc-600">C</span><span className="text-zinc-100">${point.close.toFixed(2)}</span>
+        <span className="text-zinc-600">O</span><span className="text-zinc-200">{formatPrice(point.open, symbol)}</span>
+        <span className="text-zinc-600">H</span><span className="text-emerald-400">{formatPrice(point.high, symbol)}</span>
+        <span className="text-zinc-600">L</span><span className="text-red-400">{formatPrice(point.low, symbol)}</span>
+        <span className="text-zinc-600">C</span><span className="text-zinc-100">{formatPrice(point.close, symbol)}</span>
       </div>
     </div>
   );
 }
 
-export default function CandlestickChart({ symbol = 'AAPL', height = 320 }) {
+export default function CandlestickChart({ symbol = 'AAPL', height = 320, liveKline = null }) {
   const containerRef = useRef(null);
   const [period, setPeriod] = useState('1M');
   const [loading, setLoading] = useState(true);
@@ -53,7 +56,7 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320 }) {
     setUsedFallback(false);
     try {
       const timeoutPromise = new Promise((_, reject) => {
-        loadTimeoutRef.current = window.setTimeout(() => reject(new Error('timeout')), 8000);
+        loadTimeoutRef.current = window.setTimeout(() => reject(new Error('timeout')), 25000);
       });
       const response = await Promise.race([api.getOHLCV(symbol, period), timeoutPromise]);
       const rows =
@@ -86,21 +89,45 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320 }) {
 
   useEffect(() => {
     loadData();
-  }, [loadData]);
-
-  // Auto-refresh only for very short periods, with longer intervals
-  useEffect(() => {
-    const shouldRefresh = period === '1D';
-    if (!shouldRefresh) {
-      return undefined;
-    }
-
-    const refreshMs = 30000; // 30 seconds instead of 5s to reduce load
-    const timer = window.setInterval(() => {
-      loadData();
-    }, refreshMs);
-    return () => window.clearInterval(timer);
   }, [loadData, period]);
+  
+  // High-frequency partial kline rendering loop
+  useEffect(() => {
+    if (!liveKline || !ohlcv.length) return;
+    setOhlcv(prev => {
+        if (!prev.length) return prev;
+        const out = [...prev];
+        const lastCandle = out[out.length - 1];
+        
+        const klineTime = Math.floor(liveKline.time / 1000);
+        
+        if (klineTime === lastCandle.time) {
+            // Morph the active bar seamlessly
+            out[out.length - 1] = {
+                ...lastCandle,
+                close: liveKline.close,
+                high: Math.max(lastCandle.high, liveKline.high),
+                low: Math.min(lastCandle.low, liveKline.low),
+                volume: liveKline.volume
+            };
+        } else if (klineTime > lastCandle.time) {
+            // Append a new bar on the minute transition
+            // To prevent charts from scrolling off to infinity endlessly in DOM, enforce a soft limit like 150 items
+            if (out.length > 200) out.shift(); 
+            out.push({
+                index: out[out.length - 1].index + 1,
+                time: klineTime,
+                label: new Date(liveKline.time).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
+                open: liveKline.open,
+                high: liveKline.high,
+                low: liveKline.low,
+                close: liveKline.close,
+                volume: liveKline.volume
+            });
+        }
+        return out;
+    });
+  }, [liveKline]);
 
   useEffect(() => {
     if (!containerRef.current) return undefined;
@@ -135,7 +162,7 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320 }) {
     const volumeTop = candleTop + candleHeight + 22;
     const innerWidth = Math.max(1, width - padding.left - padding.right);
     const slotWidth = innerWidth / ohlcv.length;
-    const candleWidth = Math.max(4, Math.min(16, slotWidth * 0.58));
+    const candleWidth = Math.max(1, Math.min(16, slotWidth * 0.7));
     const maxPrice = Math.max(...ohlcv.map((row) => row.high));
     const minPrice = Math.min(...ohlcv.map((row) => row.low));
     const priceRange = Math.max(maxPrice - minPrice, 1);
@@ -188,9 +215,11 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320 }) {
     setHoverIndex(null);
   }, [ohlcv, period]);
 
-  const activePoint = chart && hoverIndex != null ? chart.points[hoverIndex] : chart?.points[chart.points.length - 1];
-  const first = ohlcv[0];
-  const last = ohlcv[ohlcv.length - 1];
+  const activePoint = chart && hoverIndex != null 
+    ? (chart.points[hoverIndex] ?? null) 
+    : (chart?.points?.[chart?.points?.length - 1] ?? null);
+  const first = ohlcv.length ? ohlcv[0] : null;
+  const last = ohlcv.length ? ohlcv[ohlcv.length - 1] : null;
   const totalReturn = first && last ? ((last.close - first.close) / Math.max(first.close, 1e-9)) * 100 : 0;
   const isPos = totalReturn >= 0;
 
@@ -214,7 +243,7 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320 }) {
         </div>
         {last && (
           <div className="flex items-center gap-3 font-mono text-xs">
-            <span className="text-zinc-200">${last.close.toFixed(2)}</span>
+            <span className="text-zinc-200">{formatPrice(last.close, symbol)}</span>
             <span className={isPos ? 'text-emerald-400' : 'text-red-400'}>
               {isPos ? '+' : ''}{totalReturn.toFixed(2)}%
             </span>
@@ -243,13 +272,13 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320 }) {
           </div>
         ) : (
           <div className="relative rounded-lg border border-zinc-800/70 bg-zinc-950/35 overflow-hidden" style={{ height }}>
-            <ChartTooltip point={activePoint} />
+            <ChartTooltip point={activePoint} symbol={symbol} />
             <svg width={width} height={height} className="block">
               {chart.yTicks.map((tick) => (
                 <g key={tick.y}>
                   <line x1={chart.padding.left} x2={width - chart.padding.right} y1={tick.y} y2={tick.y} stroke="#27272a" strokeWidth="1" />
                   <text x={width - chart.padding.right - 4} y={tick.y - 4} textAnchor="end" fill="#52525b" fontSize="10" fontFamily="JetBrains Mono">
-                    ${tick.value.toFixed(2)}
+                    {formatPrice(tick.value, symbol)}
                   </text>
                 </g>
               ))}
@@ -281,15 +310,17 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320 }) {
                 );
               })}
 
-              {chart.xTicks.map((tick) => {
+              {chart.xTicks.map((tick, i) => {
                 const point = chart.points.find((item) => item.time === tick.time);
                 if (!point) return null;
+                const isFirst = i === 0;
+                const isLast = i === chart.xTicks.length - 1;
                 return (
                   <text
                     key={tick.time}
-                    x={point.x}
+                    x={isFirst ? point.x + 4 : isLast ? point.x - 4 : point.x}
                     y={height - 6}
-                    textAnchor="middle"
+                    textAnchor={isFirst ? "start" : isLast ? "end" : "middle"}
                     fill="#52525b"
                     fontSize="10"
                     fontFamily="JetBrains Mono"
@@ -313,7 +344,7 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320 }) {
           ].map(({ label, value, color }) => (
             <div key={label}>
               <span className="text-zinc-600">{label} </span>
-              <span className={color}>${value}</span>
+              <span className={color}>{formatPrice(value, symbol)}</span>
             </div>
           ))}
         </div>

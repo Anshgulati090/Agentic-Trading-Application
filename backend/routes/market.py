@@ -2,10 +2,13 @@ from fastapi import APIRouter, HTTPException, Query, status
 from typing import Optional, Dict, Any
 import yfinance as yf
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
+import math
 from functools import lru_cache
 import time
+
+from backend.services.market_engine import live_cache
 
 logger = logging.getLogger("MarketRoutes")
 
@@ -32,27 +35,141 @@ def normalize_symbol(symbol: str) -> str:
     """Convert frontend symbol to Yahoo Finance compatible symbol"""
     return SYMBOL_MAPPING.get(symbol.upper(), symbol)
 
+def clean_float(val: Any) -> Optional[float]:
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            return None
+        return f
+    except (ValueError, TypeError):
+        return None
+
 router = APIRouter(tags=["Market"])
 
 PERIOD_MAP = {
     "1D": ("1d", "5m"),
-    "1W": ("5d", "15m"),
-    "1M": ("1mo", "1h"),
+    "1W": ("5d", "30m"),
+    "1M": ("1mo", "1d"),
     "3M": ("3mo", "1d"),
     "1Y": ("1y", "1wk"),
 }
 
 POPULAR_SYMBOLS = [
-    {"symbol": "AAPL", "name": "Apple Inc.", "sector": "Technology"},
-    {"symbol": "MSFT", "name": "Microsoft Corp.", "sector": "Technology"},
-    {"symbol": "GOOGL", "name": "Alphabet Inc.", "sector": "Technology"},
-    {"symbol": "AMZN", "name": "Amazon.com Inc.", "sector": "Consumer Cyclical"},
-    {"symbol": "TSLA", "name": "Tesla Inc.", "sector": "Auto"},
-    {"symbol": "META", "name": "Meta Platforms", "sector": "Technology"},
-    {"symbol": "NVDA", "name": "NVIDIA Corp.", "sector": "Technology"},
-    {"symbol": "BTC-USD", "name": "Bitcoin", "sector": "Crypto"},
-    {"symbol": "ETH-USD", "name": "Ethereum", "sector": "Crypto"},
-    {"symbol": "SPY", "name": "S&P 500 ETF", "sector": "ETF"},
+    {"symbol": "AAPL", "name": "Apple Inc.", "sector": "Technology", "exchange": "NASDAQ"},
+    {"symbol": "MSFT", "name": "Microsoft Corp.", "sector": "Technology", "exchange": "NASDAQ"},
+    {"symbol": "GOOGL", "name": "Alphabet Inc.", "sector": "Technology", "exchange": "NASDAQ"},
+    {"symbol": "AMZN", "name": "Amazon.com Inc.", "sector": "Consumer", "exchange": "NASDAQ"},
+    {"symbol": "TSLA", "name": "Tesla Inc.", "sector": "Auto", "exchange": "NASDAQ"},
+    {"symbol": "META", "name": "Meta Platforms", "sector": "Technology", "exchange": "NASDAQ"},
+    {"symbol": "NVDA", "name": "NVIDIA Corp.", "sector": "Technology", "exchange": "NASDAQ"},
+    {"symbol": "BTC-USD", "name": "Bitcoin", "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "ETH-USD", "name": "Ethereum", "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "SPY", "name": "S&P 500 ETF", "sector": "ETF", "exchange": "NYSE Arca"},
+]
+
+# Full global catalog for search (mirrors the frontend JS catalog)
+GLOBAL_CATALOG = [
+    # US Tech
+    {"symbol": "AAPL",  "name": "Apple Inc.",             "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "MSFT",  "name": "Microsoft Corp.",         "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "GOOGL", "name": "Alphabet Inc.",           "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "AMZN",  "name": "Amazon.com Inc.",         "sector": "Consumer",      "exchange": "NASDAQ"},
+    {"symbol": "TSLA",  "name": "Tesla Inc.",              "sector": "Auto",          "exchange": "NASDAQ"},
+    {"symbol": "META",  "name": "Meta Platforms",          "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "NVDA",  "name": "NVIDIA Corp.",            "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "NFLX",  "name": "Netflix Inc.",            "sector": "Media",         "exchange": "NASDAQ"},
+    {"symbol": "AMD",   "name": "Advanced Micro Devices",  "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "INTC",  "name": "Intel Corp.",             "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "PLTR",  "name": "Palantir Technologies",   "sector": "Technology",    "exchange": "NYSE"},
+    {"symbol": "CRM",   "name": "Salesforce Inc.",         "sector": "Technology",    "exchange": "NYSE"},
+    {"symbol": "ORCL",  "name": "Oracle Corp.",            "sector": "Technology",    "exchange": "NYSE"},
+    {"symbol": "ADBE",  "name": "Adobe Inc.",              "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "PYPL",  "name": "PayPal Holdings",         "sector": "Fintech",       "exchange": "NASDAQ"},
+    {"symbol": "UBER",  "name": "Uber Technologies",       "sector": "Technology",    "exchange": "NYSE"},
+    {"symbol": "COIN",  "name": "Coinbase Global",         "sector": "Fintech",       "exchange": "NASDAQ"},
+    {"symbol": "AVGO",  "name": "Broadcom Inc.",           "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "QCOM",  "name": "Qualcomm Inc.",           "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "MU",    "name": "Micron Technology",       "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "ASML",  "name": "ASML Holding",           "sector": "Technology",    "exchange": "NASDAQ"},
+    {"symbol": "ARM",   "name": "Arm Holdings",           "sector": "Technology",    "exchange": "NASDAQ"},
+    # US Financials
+    {"symbol": "JPM",   "name": "JPMorgan Chase",          "sector": "Financials",    "exchange": "NYSE"},
+    {"symbol": "GS",    "name": "Goldman Sachs",           "sector": "Financials",    "exchange": "NYSE"},
+    {"symbol": "BAC",   "name": "Bank of America",         "sector": "Financials",    "exchange": "NYSE"},
+    {"symbol": "V",     "name": "Visa Inc.",               "sector": "Financials",    "exchange": "NYSE"},
+    {"symbol": "MA",    "name": "Mastercard Inc.",         "sector": "Financials",    "exchange": "NYSE"},
+    {"symbol": "AXP",   "name": "American Express",        "sector": "Financials",    "exchange": "NYSE"},
+    {"symbol": "BRK-B", "name": "Berkshire Hathaway B",   "sector": "Financials",    "exchange": "NYSE"},
+    # US Healthcare
+    {"symbol": "JNJ",   "name": "Johnson & Johnson",       "sector": "Healthcare",    "exchange": "NYSE"},
+    {"symbol": "PFE",   "name": "Pfizer Inc.",             "sector": "Healthcare",    "exchange": "NYSE"},
+    {"symbol": "LLY",   "name": "Eli Lilly & Co.",         "sector": "Healthcare",    "exchange": "NYSE"},
+    {"symbol": "MRNA",  "name": "Moderna Inc.",            "sector": "Healthcare",    "exchange": "NASDAQ"},
+    # US Consumer
+    {"symbol": "WMT",   "name": "Walmart Inc.",            "sector": "Consumer",      "exchange": "NYSE"},
+    {"symbol": "COST",  "name": "Costco Wholesale",        "sector": "Consumer",      "exchange": "NASDAQ"},
+    {"symbol": "MCD",   "name": "McDonald's Corp.",        "sector": "Consumer",      "exchange": "NYSE"},
+    {"symbol": "SBUX",  "name": "Starbucks Corp.",         "sector": "Consumer",      "exchange": "NASDAQ"},
+    {"symbol": "NKE",   "name": "Nike Inc.",               "sector": "Consumer",      "exchange": "NYSE"},
+    {"symbol": "DIS",   "name": "Walt Disney Co.",         "sector": "Media",         "exchange": "NYSE"},
+    # US Energy
+    {"symbol": "XOM",   "name": "Exxon Mobil Corp.",       "sector": "Energy",        "exchange": "NYSE"},
+    {"symbol": "CVX",   "name": "Chevron Corp.",           "sector": "Energy",        "exchange": "NYSE"},
+    # India
+    {"symbol": "RELIANCE.NS",   "name": "Reliance Industries",       "sector": "Conglomerate", "exchange": "NSE"},
+    {"symbol": "TCS.NS",        "name": "Tata Consultancy Services",  "sector": "IT",           "exchange": "NSE"},
+    {"symbol": "INFY.NS",       "name": "Infosys Ltd.",               "sector": "IT",           "exchange": "NSE"},
+    {"symbol": "HDFCBANK.NS",   "name": "HDFC Bank Ltd.",             "sector": "Banking",      "exchange": "NSE"},
+    {"symbol": "ICICIBANK.NS",  "name": "ICICI Bank Ltd.",            "sector": "Banking",      "exchange": "NSE"},
+    {"symbol": "SBIN.NS",       "name": "State Bank of India",        "sector": "Banking",      "exchange": "NSE"},
+    {"symbol": "WIPRO.NS",      "name": "Wipro Ltd.",                 "sector": "IT",           "exchange": "NSE"},
+    {"symbol": "TATASTEEL.NS",  "name": "Tata Steel Ltd.",            "sector": "Steel",        "exchange": "NSE"},
+    {"symbol": "TATAMOTORS.NS", "name": "Tata Motors Ltd.",           "sector": "Auto",         "exchange": "NSE"},
+    {"symbol": "HCLTECH.NS",    "name": "HCL Technologies",           "sector": "IT",           "exchange": "NSE"},
+    {"symbol": "BAJFINANCE.NS", "name": "Bajaj Finance Ltd.",          "sector": "NBFC",         "exchange": "NSE"},
+    {"symbol": "AXISBANK.NS",   "name": "Axis Bank Ltd.",             "sector": "Banking",      "exchange": "NSE"},
+    {"symbol": "ADANIENT.NS",   "name": "Adani Enterprises",          "sector": "Conglomerate", "exchange": "NSE"},
+    {"symbol": "BHARTIARTL.NS", "name": "Bharti Airtel Ltd.",         "sector": "Telecom",      "exchange": "NSE"},
+    {"symbol": "MARUTI.NS",     "name": "Maruti Suzuki India",        "sector": "Auto",         "exchange": "NSE"},
+    {"symbol": "ITC.NS",        "name": "ITC Ltd.",                   "sector": "FMCG",         "exchange": "NSE"},
+    {"symbol": "SUNPHARMA.NS",  "name": "Sun Pharmaceutical",         "sector": "Healthcare",   "exchange": "NSE"},
+    {"symbol": "TITAN.NS",      "name": "Titan Company Ltd.",         "sector": "Consumer",     "exchange": "NSE"},
+    {"symbol": "ASIANPAINT.NS", "name": "Asian Paints Ltd.",          "sector": "Consumer",     "exchange": "NSE"},
+    {"symbol": "ZOMATO.NS",     "name": "Zomato Ltd.",                "sector": "Consumer",     "exchange": "NSE"},
+    {"symbol": "LT.NS",         "name": "Larsen & Toubro Ltd.",       "sector": "Engineering",  "exchange": "NSE"},
+    {"symbol": "DMART.NS",      "name": "Avenue Supermarts (DMart)",  "sector": "Retail",       "exchange": "NSE"},
+    {"symbol": "ONGC.NS",       "name": "Oil & Natural Gas Corp.",    "sector": "Energy",       "exchange": "NSE"},
+    {"symbol": "NTPC.NS",       "name": "NTPC Ltd.",                  "sector": "Energy",       "exchange": "NSE"},
+    # ETFs & Indices
+    {"symbol": "SPY",    "name": "SPDR S&P 500 ETF",       "sector": "ETF",    "exchange": "NYSE Arca"},
+    {"symbol": "QQQ",    "name": "Invesco QQQ Trust",       "sector": "ETF",    "exchange": "NASDAQ"},
+    {"symbol": "IWM",    "name": "iShares Russell 2000",    "sector": "ETF",    "exchange": "NYSE Arca"},
+    {"symbol": "DIA",    "name": "SPDR Dow Jones ETF",      "sector": "ETF",    "exchange": "NYSE Arca"},
+    {"symbol": "GLD",    "name": "SPDR Gold Shares",        "sector": "ETF",    "exchange": "NYSE Arca"},
+    {"symbol": "ARKK",   "name": "ARK Innovation ETF",      "sector": "ETF",    "exchange": "NYSE Arca"},
+    {"symbol": "VIX",    "name": "CBOE Volatility Index",   "sector": "Index",  "exchange": "CBOE"},
+    # Crypto
+    {"symbol": "BTC-USD",  "name": "Bitcoin",      "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "ETH-USD",  "name": "Ethereum",     "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "SOL-USD",  "name": "Solana",       "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "BNB-USD",  "name": "Binance Coin", "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "XRP-USD",  "name": "XRP (Ripple)", "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "DOGE-USD", "name": "Dogecoin",     "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "ADA-USD",  "name": "Cardano",      "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "AVAX-USD", "name": "Avalanche",    "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "MATIC-USD","name": "Polygon",      "sector": "Crypto", "exchange": "Crypto"},
+    {"symbol": "SHIB-USD", "name": "Shiba Inu",    "sector": "Crypto", "exchange": "Crypto"},
+    # Forex
+    {"symbol": "EURUSD=X", "name": "EUR/USD",  "sector": "Forex", "exchange": "FX"},
+    {"symbol": "GBPUSD=X", "name": "GBP/USD",  "sector": "Forex", "exchange": "FX"},
+    {"symbol": "USDINR=X", "name": "USD/INR",  "sector": "Forex", "exchange": "FX"},
+    {"symbol": "USDJPY=X", "name": "USD/JPY",  "sector": "Forex", "exchange": "FX"},
+    # Commodities
+    {"symbol": "GC=F",  "name": "Gold Futures",             "sector": "Commodity", "exchange": "COMEX"},
+    {"symbol": "CL=F",  "name": "Crude Oil Futures (WTI)",  "sector": "Commodity", "exchange": "NYMEX"},
+    {"symbol": "NG=F",  "name": "Natural Gas Futures",      "sector": "Commodity", "exchange": "NYMEX"},
 ]
 
 
@@ -78,7 +195,7 @@ def format_success_response(data: Any) -> Dict[str, Any]:
 
 
 @router.get("/price/{symbol}")
-async def get_price(symbol: str):
+def get_price(symbol: str):
     """Get current price and basic stats for a symbol with comprehensive error handling"""
     try:
         original_symbol = symbol.upper()
@@ -87,6 +204,12 @@ async def get_price(symbol: str):
 
         cache_key = f"{original_symbol}"
         now_ts = time.time()
+        
+        # Priority 1: Instant memory lookup from WebSocket streaming engine
+        live_tick = live_cache.get_tick(cache_key)
+        if live_tick:
+            return format_success_response(live_tick)
+            
         cached = _price_cache.get(cache_key)
         if cached:
             cached_data, cached_at = cached
@@ -99,24 +222,24 @@ async def get_price(symbol: str):
 
         # Prefer fast_info for low-latency quote data
         fast_info = getattr(ticker, "fast_info", {}) or {}
-        price = fast_info.get("last_price") or fast_info.get("last") or fast_info.get("regular_market_price")
-        prev_close = fast_info.get("previous_close") or fast_info.get("previousClose")
-        open_price = fast_info.get("open")
-        day_high = fast_info.get("day_high") or fast_info.get("high")
-        day_low = fast_info.get("day_low") or fast_info.get("low")
-        volume = fast_info.get("volume")
+        price = clean_float(fast_info.get("last_price") or fast_info.get("last") or fast_info.get("regular_market_price"))
+        prev_close = clean_float(fast_info.get("previous_close") or fast_info.get("previousClose"))
+        open_price = clean_float(fast_info.get("open"))
+        day_high = clean_float(fast_info.get("day_high") or fast_info.get("high"))
+        day_low = clean_float(fast_info.get("day_low") or fast_info.get("low"))
+        volume = clean_float(fast_info.get("volume"))
 
         # Fallback to recent history if fast_info is incomplete
         hist = ticker.history(period="2d")
         if (price is None or prev_close is None) and hist is not None and not hist.empty:
             latest = hist.iloc[-1]
             prev = hist.iloc[-2] if len(hist) > 1 else hist.iloc[-1]
-            price = float(latest["Close"])
-            prev_close = float(prev["Close"])
-            open_price = float(latest.get("Open", price))
-            day_high = float(latest.get("High", price))
-            day_low = float(latest.get("Low", price))
-            volume = int(latest.get("Volume", 0))
+            price = clean_float(latest.get("Close"))
+            prev_close = clean_float(prev.get("Close"))
+            open_price = clean_float(latest.get("Open", price))
+            day_high = clean_float(latest.get("High", price))
+            day_low = clean_float(latest.get("Low", price))
+            volume = clean_float(latest.get("Volume", 0.0))
 
         if price is None or prev_close is None:
             raise HTTPException(
@@ -148,7 +271,7 @@ async def get_price(symbol: str):
             "high": round(float(day_high or price), 2),
             "low": round(float(day_low or price), 2),
             "prev_close": round(float(prev_close), 2),
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "history": spark,
         }
 
@@ -171,6 +294,38 @@ async def get_price(symbol: str):
             detail=f"Failed to fetch price data: {str(e)}"
         )
 
+@router.get("/prices/bulk")
+def get_prices_bulk(symbols: str):
+    """
+    Fetch exact pricing for multiple symbols instantly in parallel to prevent 
+    FastAPI threadpool starvation on the Global Markets dashboard.
+    """
+    import concurrent.futures
+    
+    sym_list = [s.strip() for s in symbols.split(',') if s.strip()]
+    if not sym_list:
+        return format_success_response({})
+        
+    results = {}
+    
+    # We use ThreadPoolExecutor to bound the blocking yfinance calls 
+    # without choking FastAPI's primary worker pool.
+    def fetch_single(sym):
+        try:
+            # Reusing the existing robust function safely bypasses duplicate logic
+            return sym, get_price(sym)["data"]
+        except Exception:
+            return sym, None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_sym = {executor.submit(fetch_single, sym): sym for sym in sym_list}
+        for future in concurrent.futures.as_completed(future_to_sym):
+            sym, data = future.result()
+            if data:
+                results[sym] = data
+                
+    return format_success_response(results)
+
 
 # Simple in-memory cache for OHLCV data
 _ohlcv_cache = {}
@@ -178,10 +333,10 @@ _CACHE_TTL_SECONDS = 300  # 5 minutes for OHLCV data
 
 # Simple in-memory cache for price quotes
 _price_cache = {}
-_PRICE_TTL_SECONDS = 8  # short TTL to smooth bursts without going stale
+_PRICE_TTL_SECONDS = 30  # 30s cache to avoid yfinance rate-limiting across concurrent requests
 
 @router.get("/ohlcv/{symbol}")
-async def get_ohlcv(
+def get_ohlcv(
     symbol: str,
     period: str = Query("1M", enum=["1D", "1W", "1M", "3M", "1Y"]),
     interval: Optional[str] = Query(None, description="Override default interval")
@@ -261,7 +416,7 @@ async def get_ohlcv(
 
 
 @router.get("/info/{symbol}")
-async def get_symbol_info(symbol: str):
+def get_symbol_info(symbol: str):
     """Get detailed symbol information with comprehensive error handling"""
     try:
         original_symbol = symbol.upper()
@@ -315,47 +470,48 @@ async def get_symbol_info(symbol: str):
 
 
 @router.get("/search")
-async def search_symbols(q: str = Query(..., min_length=1, max_length=10)):
-    """Search for symbols with improved error handling"""
+async def search_symbols(q: str = Query(..., min_length=1, max_length=50)):
+    """Search global symbols — searches full catalog first, falls back to yfinance."""
     try:
-        query = q.upper().strip()
-        logger.info(f"Searching for: {query}")
-        
+        query_raw = q.strip()
+        query_up = query_raw.upper()
+        query_lo = query_raw.lower()
+        logger.info(f"Searching for: {query_raw}")
+
+        def score(item: dict) -> int:
+            sym  = item["symbol"].upper()
+            name = item["name"].lower()
+            sect = item.get("sector", "").lower()
+            exch = item.get("exchange", "").lower()
+            s = 0
+            if sym == query_up:               s += 100
+            elif sym.startswith(query_up):    s += 80
+            elif query_up in sym:             s += 60
+            elif name.startswith(query_lo):   s += 50
+            elif query_lo in name:            s += 40
+            elif query_lo in sect:            s += 20
+            elif query_lo in exch:            s += 10
+            return s
+
+        scored = [(score(item), item) for item in GLOBAL_CATALOG]
         results = [
-            s for s in POPULAR_SYMBOLS
-            if query in s["symbol"].upper() or query in s["name"].upper()
-        ]
-        
-        # Try direct ticker lookup for exact matches
-        if not results and 1 <= len(query) <= 6:
-            try:
-                ticker = yf.Ticker(query)
-                info = ticker.info or {}
-                if info.get("regularMarketPrice") or info.get("currentPrice"):
-                    results.append({
-                        "symbol": query,
-                        "name": info.get("longName") or info.get("shortName", query),
-                        "sector": info.get("sector", ""),
-                    })
-                    logger.debug(f"Found direct match for {query}")
-            except Exception as e:
-                logger.debug(f"Direct lookup failed for {query}: {e}")
-        
-        if not results:
-            logger.info(f"No results found for query: {query}")
-        
+            item for sc, item in sorted(scored, key=lambda x: -x[0])
+            if sc > 0
+        ][:10]
+
         return format_success_response({
-            "query": query,
+            "query": query_raw,
             "count": len(results),
-            "results": results[:10]
+            "results": results,
         })
-        
+
     except Exception as e:
         logger.error(f"Error searching symbols: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Search failed: {str(e)}"
         )
+
 
 
 @router.get("/popular")
@@ -365,3 +521,131 @@ async def get_popular():
         "count": len(POPULAR_SYMBOLS),
         "symbols": POPULAR_SYMBOLS
     })
+
+
+# Cache for technicals (2 minutes TTL)
+_technicals_cache: dict = {}
+_TECH_TTL = 120
+
+@router.get("/technicals/{symbol}")
+def get_technicals(symbol: str):
+    """
+    Compute real technical indicators from 60-day OHLCV history:
+    - SMA-20, SMA-50 (trend direction)
+    - RSI-14 (momentum / signal state)
+    - Support & resistance levels
+    - Volatility (20-day std of daily returns)
+    """
+    original_symbol = symbol.upper()
+    yahoo_symbol = normalize_symbol(original_symbol)
+    cache_key = original_symbol
+    now_ts = time.time()
+
+    cached = _technicals_cache.get(cache_key)
+    if cached:
+        data, cached_at = cached
+        if now_ts - cached_at < _TECH_TTL:
+            return format_success_response(data)
+
+    try:
+        ticker = yf.Ticker(yahoo_symbol)
+        hist = ticker.history(period="3mo", interval="1d")
+
+        if hist is None or hist.empty or len(hist) < 15:
+            # Return neutral fallback if not enough data
+            return format_success_response({
+                "symbol": original_symbol,
+                "trend_bias": "Neutral",
+                "signal_state": "HOLD",
+                "rsi_14": None,
+                "sma_20": None,
+                "sma_50": None,
+                "current_price": None,
+                "support": None,
+                "resistance": None,
+                "volatility_pct": None,
+                "note": "Insufficient history",
+            })
+
+        closes = hist["Close"].astype(float)
+        current_price = float(closes.iloc[-1])
+
+        # ── SMA ──────────────────────────────────────────────────────────────
+        sma_20 = float(closes.tail(20).mean()) if len(closes) >= 20 else None
+        sma_50 = float(closes.tail(50).mean()) if len(closes) >= 50 else None
+
+        # ── RSI-14 ────────────────────────────────────────────────────────────
+        delta = closes.diff().dropna()
+        gain = delta.clip(lower=0)
+        loss = (-delta).clip(lower=0)
+        # Wilder's smoothing
+        avg_gain = gain.ewm(com=13, adjust=False).mean().iloc[-1]
+        avg_loss = loss.ewm(com=13, adjust=False).mean().iloc[-1]
+        if avg_loss == 0:
+            rsi = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            rsi = round(100.0 - (100.0 / (1.0 + rs)), 2)
+
+        # ── Trend Bias ───────────────────────────────────────────────────────
+        if sma_20 and sma_50:
+            if current_price > sma_20 > sma_50:
+                trend_bias = "Bullish"
+            elif current_price < sma_20 < sma_50:
+                trend_bias = "Bearish"
+            elif current_price > sma_50:
+                trend_bias = "Mildly Bullish"
+            else:
+                trend_bias = "Mildly Bearish"
+        elif sma_20:
+            trend_bias = "Bullish" if current_price > sma_20 else "Bearish"
+        else:
+            trend_bias = "Neutral"
+
+        # ── Signal State from RSI ────────────────────────────────────────────
+        if rsi >= 65:
+            signal_state = "SELL"   # overbought
+        elif rsi <= 35:
+            signal_state = "BUY"    # oversold
+        else:
+            signal_state = "HOLD"
+
+        # ── Support / Resistance (20-day low/high) ───────────────────────────
+        window_20 = hist.tail(20)
+        support = round(float(window_20["Low"].min()), 2)
+        resistance = round(float(window_20["High"].max()), 2)
+
+        # ── Volatility ───────────────────────────────────────────────────────
+        daily_returns = closes.pct_change().dropna().tail(20)
+        volatility_pct = round(float(daily_returns.std() * 100), 2) if len(daily_returns) > 1 else None
+
+        data = {
+            "symbol": original_symbol,
+            "trend_bias": trend_bias,
+            "signal_state": signal_state,
+            "rsi_14": rsi,
+            "sma_20": round(sma_20, 2) if sma_20 else None,
+            "sma_50": round(sma_50, 2) if sma_50 else None,
+            "current_price": round(current_price, 2),
+            "support": support,
+            "resistance": resistance,
+            "volatility_pct": volatility_pct,
+        }
+        _technicals_cache[cache_key] = (data, now_ts)
+        return format_success_response(data)
+
+    except Exception as e:
+        logger.error(f"Technicals error for {symbol}: {e}", exc_info=True)
+        return format_success_response({
+            "symbol": original_symbol,
+            "trend_bias": "Neutral",
+            "signal_state": "HOLD",
+            "rsi_14": None,
+            "sma_20": None,
+            "sma_50": None,
+            "current_price": None,
+            "support": None,
+            "resistance": None,
+            "volatility_pct": None,
+            "note": str(e),
+        })

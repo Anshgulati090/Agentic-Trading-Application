@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     ALPACA_API_KEY: str = ""
     ALPACA_API_SECRET: str = ""
     ALPACA_DATA_FEED: str = "iex"
+    ALPACA_ORDER_URL: str = "https://paper-api.alpaca.markets"
+    BINANCE_API_KEY: str = ""
+    BINANCE_API_SECRET: str = ""
+    BINANCE_TESTNET: bool = True
+
+    # Live trading safety controls
+    LIVE_TRADING_ENABLED: bool = False
+    LIVE_TRADING_PROVIDER: str = "alpaca"  # alpaca | binance
+    LIVE_TRADING_FAILOVER_TO_PAPER: bool = False
 
     # Email verification
     SMTP_HOST: str = ""

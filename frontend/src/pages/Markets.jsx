@@ -1,308 +1,387 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import MiniSparkline from '../components/MiniSparkline';
 import { searchMarkets } from '../data/marketCatalog';
 import { api } from '../services/api';
+import { safeArray } from '../utils/safeApi';
+import { useLiveMarket } from '../hooks/useLiveMarket';
 
-const SIDEBAR_SECTIONS = [
-  'Overview',
-  'World Indices',
-  'Global Markets',
-  'Assets',
-  'Crypto',
-  'Trending',
-];
-
+/* ─── market catalog ─────────────────────────────────────── */
 const MARKET_GROUPS = [
   {
     id: 'world-indices',
     title: 'World Indices',
+    icon: '🌐',
     groups: [
       { title: 'Americas', symbols: ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX'] },
-      { title: 'Europe', symbols: ['VGK', 'FEZ', 'EZU', 'EWU', 'EWL'] },
-      { title: 'Asia', symbols: ['EWJ', 'MCHI', 'EWA', 'INDA', 'EWH'] },
+      { title: 'Europe',   symbols: ['VGK', 'FEZ', 'EZU', 'EWU', 'EWL'] },
+      { title: 'Asia',     symbols: ['EWJ', 'MCHI', 'EWA', 'INDA', 'EWH'] },
     ],
   },
   {
     id: 'assets',
     title: 'Assets',
+    icon: '📦',
     groups: [
-      { title: 'Commodities', symbols: ['GLD', 'SLV', 'XOM', 'CVX'] },
-      { title: 'Currencies', symbols: ['UUP', 'FXE', 'FXY', 'FXB'] },
+      { title: 'Commodities',    symbols: ['GLD', 'SLV', 'XOM', 'CVX'] },
+      { title: 'Currencies',     symbols: ['UUP', 'FXE', 'FXY', 'FXB'] },
       { title: 'Treasury Bonds', symbols: ['TLT', 'IEF', 'SHY', 'BIL'] },
     ],
   },
   {
     id: 'crypto',
     title: 'Crypto Markets',
+    icon: '₿',
     groups: [
       { title: 'Digital Assets', symbols: ['BTC', 'ETH', 'SOL'] },
     ],
   },
 ];
 
-function useDebouncedValue(value, delayMs = 400) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-  return debounced;
+const QUICK_PICKS = ['AAPL', 'NVDA', 'MSFT', 'TSLA', 'AMZN', 'META', 'GOOGL', 'BTC-USD', 'ETH-USD', 'SPY'];
+
+/* ─── helpers ─────────────────────────────────────────────── */
+function useDebouncedValue(v, ms = 350) {
+  const [d, setD] = useState(v);
+  useEffect(() => { const t = setTimeout(() => setD(v), ms); return () => clearTimeout(t); }, [v, ms]);
+  return d;
 }
 
 function normalizeQuote(payload) {
-  const quote = payload?.data || payload || {};
-  const history = (quote.history || []).map((row) => Number(row.close ?? row.value ?? row.price)).filter(Number.isFinite);
-  return {
-    symbol: quote.symbol,
-    price: Number(quote.price),
-    change: Number(quote.change),
-    changePct: Number(quote.change_pct ?? quote.changePct),
-    volume: Number(quote.volume ?? 0),
-    history,
-  };
+  const q = payload?.data || payload || {};
+  const history = safeArray(q.history).map((r) => Number(r?.close ?? r?.price ?? 0)).filter(Number.isFinite);
+  return { symbol: q.symbol, price: Number(q.price), change: Number(q.change), changePct: Number(q.change_pct ?? 0), history };
 }
 
-function formatPrice(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return '--';
-  return numeric >= 1000
-    ? numeric.toLocaleString('en-US', { maximumFractionDigits: 2 })
-    : numeric.toFixed(2);
-}
+const fmtP = (v) => {
+  const n = Number(v); if (!Number.isFinite(n)) return '—';
+  return n >= 1000 ? n.toLocaleString('en-US', { maximumFractionDigits: 2 }) : n.toFixed(2);
+};
+const fmtC = (v, isDecimal = false) => {
+  const n = Number(v) * (isDecimal ? 100 : 1);
+  if (!Number.isFinite(n)) return '—';
+  return `${n >= 0 ? '+' : ''}${n.toFixed(2)}${isDecimal ? '%' : ''}`;
+};
 
-function formatChange(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return '--';
-  return `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}`;
-}
-
+/* ─── SectionTable ─────────────────────────────────────────── */
 function SectionTable({ title, items, quotes }) {
   return (
-    <div className="rounded-[24px] border border-zinc-800/80 bg-zinc-900/55">
-      <div className="flex items-center justify-between border-b border-zinc-800/70 px-4 py-3">
-        <div className="text-lg text-zinc-100">{title}</div>
-        <div className="text-[10px] uppercase tracking-[0.3em] text-zinc-500">{items.length} symbols</div>
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-default)', borderRadius: 12, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: '1px solid rgba(0,183,255,0.08)' }}>
+        <span style={{ fontWeight: 600, color: '#e8f4ff', fontSize: 14 }}>{title}</span>
+        <span style={{ fontSize: 10, color: '#3d607a', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.2em' }}>{items.length} symbols</span>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[36rem]">
-          <thead>
-            <tr className="text-left text-[10px] uppercase tracking-[0.28em] text-zinc-500">
-              <th className="px-4 py-3 font-normal">Symbol</th>
-              <th className="px-4 py-3 font-normal">Name</th>
-              <th className="px-4 py-3 font-normal">Trend</th>
-              <th className="px-4 py-3 font-normal text-right">Price</th>
-              <th className="px-4 py-3 font-normal text-right">Change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => {
-              const quote = quotes[item.symbol];
-              const positive = (quote?.change ?? 0) >= 0;
-              return (
-                <tr key={item.symbol} className="border-t border-zinc-800/60 hover:bg-zinc-800/30 transition-colors">
-                  <td className="px-4 py-3">
-                    <Link to={`/markets/${item.symbol}`} className="font-mono text-cyan-400 hover:text-cyan-300">
-                      {item.symbol}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-zinc-300">{item.name}</td>
-                  <td className="px-4 py-3">
-                    <MiniSparkline points={quote?.history || []} positive={positive} className="h-8 w-20" />
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-zinc-100">${formatPrice(quote?.price)}</td>
-                  <td className={`px-4 py-3 text-right font-mono ${positive ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {formatChange(quote?.change)} ({formatChange((quote?.changePct ?? 0) * 100)}%)
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <table className="data-table">
+        <thead>
+          <tr>
+            <th>Symbol</th><th>Name</th><th>Trend</th>
+            <th style={{ textAlign: 'right' }}>Price</th>
+            <th style={{ textAlign: 'right' }}>Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item) => {
+            const q = quotes[item.symbol];
+            const pos = (q?.change ?? 0) >= 0;
+            const hasData = q?.price != null && Number.isFinite(q.price);
+            return (
+              <tr key={item.symbol}>
+                <td>
+                  <Link to={`/markets/${item.symbol}`} style={{
+                    fontFamily: 'JetBrains Mono, monospace', fontWeight: 700, fontSize: 13,
+                    color: '#00d4ff', textDecoration: 'none', transition: 'color 0.15s',
+                  }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = '#00e676'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = '#00d4ff'}
+                  >
+                    {item.symbol}
+                  </Link>
+                </td>
+                <td style={{ color: '#7a9ab5', fontSize: 12 }}>{item.name}</td>
+                <td><MiniSparkline points={q?.history || []} positive={pos} className="h-8 w-16" /></td>
+                <td style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 600, color: '#e8f4ff' }}>
+                  {hasData ? `$${fmtP(q.price)}` : <span style={{ color: '#3d607a' }}>$—</span>}
+                </td>
+                <td style={{ textAlign: 'right', fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: pos ? '#00e676' : '#ff3d57' }}>
+                  {hasData
+                    ? `${fmtC(q.change)} (${fmtC(q.changePct, true)})`
+                    : <span style={{ color: '#3d607a' }}>—</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
 
+/* ─── QuickPick card ──────────────────────────────────────── */
+function QuickCard({ symbol, quote }) {
+  const pos = (quote?.change ?? 0) >= 0;
+  const hasData = quote?.price != null && Number.isFinite(quote.price);
+  return (
+    <Link to={`/markets/${symbol}`} style={{ textDecoration: 'none' }}>
+      <div style={{
+        background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
+        borderRadius: 10, padding: '12px 14px', cursor: 'pointer', transition: 'all 0.2s',
+        position: 'relative', overflow: 'hidden',
+      }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--border-strong)'; e.currentTarget.style.background = 'var(--bg-card-hover)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--border-subtle)'; e.currentTarget.style.background = 'var(--bg-card)'; e.currentTarget.style.transform = 'none'; }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, fontWeight: 700, color: '#00d4ff' }}>{symbol}</span>
+          {hasData && (
+            <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: pos ? '#00e676' : '#ff3d57',
+              background: pos ? 'rgba(0,230,118,0.1)' : 'rgba(255,61,87,0.1)',
+              padding: '2px 6px', borderRadius: 4 }}>
+              {fmtC(quote.changePct, true)}
+            </span>
+          )}
+        </div>
+        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, fontWeight: 700, color: hasData ? (pos ? '#00e676' : '#ff3d57') : '#3d607a', marginBottom: 6 }}>
+          {hasData ? `$${fmtP(quote.price)}` : '$—'}
+        </div>
+        <MiniSparkline points={quote?.history || []} positive={pos} className="h-8 w-full" />
+      </div>
+    </Link>
+  );
+}
+
+/* ─── Main ─────────────────────────────────────────────────── */
 export default function Markets() {
   const [searchParams] = useSearchParams();
-  const initialQuery = searchParams.get('query') || '';
-  const [query, setQuery] = useState(initialQuery);
+  const navigate = useNavigate();
+  const [query, setQuery] = useState(searchParams.get('query') || '');
   const [results, setResults] = useState([]);
-  const [quotes, setQuotes] = useState({});
-  const debouncedQuery = useDebouncedValue(query, 400);
+  const liveTicks = useLiveMarket();
+  const [historyQuotes, setHistoryQuotes] = useState({});
+  const dq = useDebouncedValue(query, 350);
 
-  const trackedSymbols = useMemo(() => {
-    const groupSymbols = MARKET_GROUPS.flatMap((section) => section.groups.flatMap((group) => group.symbols));
-    const resultSymbols = results.map((item) => item.symbol);
-    return Array.from(new Set([...groupSymbols, ...resultSymbols]));
+  const allSymbols = useMemo(() => {
+    const fromGroups = MARKET_GROUPS.flatMap((s) => s.groups.flatMap((g) => g.symbols));
+    const fromResults = results.map((r) => r.symbol);
+    const fromQuick = QUICK_PICKS;
+    return Array.from(new Set([...fromGroups, ...fromResults, ...fromQuick]));
   }, [results]);
 
   const loadQuotes = useCallback(async () => {
-    const values = await Promise.allSettled(
-      trackedSymbols.map((symbol) => api.getMarketPrice(symbol).then((payload) => [symbol, normalizeQuote(payload)]))
-    );
-
-    setQuotes((prev) => {
-      const next = { ...prev };
-      values.forEach((result) => {
-        if (result.status === 'fulfilled') {
-          const [symbol, quote] = result.value;
-          next[symbol] = quote;
-        }
+    if (!allSymbols.length) return;
+    try {
+      const payload = await api.getMarketPrices(allSymbols);
+      const data = payload?.data || payload || {};
+      setHistoryQuotes((prev) => {
+        const next = { ...prev };
+        Object.entries(data).forEach(([s, q]) => {
+          if (q && Number.isFinite(Number(q.price))) {
+            next[s] = normalizeQuote(q);
+          }
+        });
+        return next;
       });
-      return next;
-    });
-  }, [trackedSymbols]);
+    } catch (e) {
+      console.warn("Bulk market fetch failed", e);
+    }
+  }, [allSymbols]);
+
+  // Only load purely historical data ONCE on mount or when search changes 
+  // (so sparklines render). Live updates come from the websocket.
+  useEffect(() => { loadQuotes(); }, [loadQuotes]);
+
+  const quotes = useMemo(() => {
+    const merged = { ...historyQuotes };
+    for (const sym of Object.keys(liveTicks)) {
+      if (merged[sym]) {
+         merged[sym] = { ...merged[sym], ...liveTicks[sym] };
+      } else {
+         merged[sym] = liveTicks[sym];
+      }
+    }
+    return merged;
+  }, [historyQuotes, liveTicks]);
 
   useEffect(() => {
-    const trimmed = debouncedQuery.trim();
-    if (!trimmed) {
-      setResults([]);
-      return;
-    }
-
+    const trimmed = dq.trim();
+    if (!trimmed) { setResults([]); return; }
     let active = true;
     (async () => {
       try {
-        const response = await api.searchSymbols(trimmed);
-        const remote = response?.data?.results || response?.results || [];
+        const resp = await api.searchSymbols(trimmed);
+        const remote = resp?.data?.results || resp?.results || [];
         const local = searchMarkets(trimmed);
-        if (!active) return;
-        setResults(Array.from(new Map([...local, ...remote].map((item) => [item.symbol, item])).values()).slice(0, 6));
-      } catch {
-        if (!active) return;
-        setResults(searchMarkets(trimmed).slice(0, 6));
-      }
+        if (active) setResults(Array.from(new Map([...local, ...remote].map((i) => [i.symbol, i])).values()).slice(0, 8));
+      } catch { if (active) setResults(searchMarkets(trimmed).slice(0, 8)); }
     })();
-
     return () => { active = false; };
-  }, [debouncedQuery]);
+  }, [dq]);
 
-  useEffect(() => {
-    loadQuotes();
-    const timer = window.setInterval(loadQuotes, 12000);
-    return () => window.clearInterval(timer);
-  }, [loadQuotes]);
-
-  const trending = useMemo(() => {
-    return Object.values(quotes)
-      .sort((left, right) => Math.abs(right.changePct ?? 0) - Math.abs(left.changePct ?? 0))
-      .slice(0, 6);
-  }, [quotes]);
+  const trending = useMemo(() =>
+    Object.entries(quotes)
+      .sort((a, b) => Math.abs(b[1]?.changePct ?? 0) - Math.abs(a[1]?.changePct ?? 0))
+      .slice(0, 5)
+      .map(([s, q]) => ({ symbol: s, ...q })),
+    [quotes]);
 
   return (
-    <div className="space-y-6">
-      <section className="grid gap-6 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
-        <aside className="hidden xl:block rounded-[24px] border border-zinc-800/80 bg-zinc-900/55 p-4">
-          <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400">Markets</div>
-          <div className="mt-4 space-y-1">
-            {SIDEBAR_SECTIONS.map((item, index) => (
-              <button
-                key={item}
-                className={`w-full rounded-xl px-3 py-2 text-left text-sm transition ${
-                  index === 0 ? 'bg-cyan-500/15 text-cyan-300' : 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
-                }`}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
-        </aside>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
 
-        <div className="rounded-[28px] border border-zinc-800/80 bg-gradient-to-br from-zinc-900 via-zinc-950 to-zinc-900/80 px-5 py-6 sm:px-8">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.35em] text-cyan-400">Markets Overview</div>
-              <h1 className="mt-3 text-3xl font-light text-zinc-100 sm:text-4xl">Global market dashboard</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-7 text-zinc-400">
-                Scan world indices, macro assets, and crypto in one place, then drill into a symbol for deeper analysis and demo trading.
-              </p>
-            </div>
-            <Link to="/dashboard" className="rounded-full border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-cyan-500 hover:text-cyan-300">
-              Open Dashboard
-            </Link>
-          </div>
+      {/* ── Hero search ─────────────────────────────────────── */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(10,21,32,0.95) 0%, rgba(7,16,24,0.98) 100%)',
+        border: '1px solid rgba(0,183,255,0.15)',
+        borderRadius: 16, padding: '28px 28px',
+        boxShadow: '0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(0,212,255,0.06)',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'radial-gradient(ellipse 60% 80% at 0% 50%, rgba(0,100,200,0.12) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'relative' }}>
+          <div style={{ fontSize: 10, color: '#3d607a', textTransform: 'uppercase', letterSpacing: '0.3em', fontFamily: 'JetBrains Mono, monospace', marginBottom: 10 }}>Markets Overview</div>
+          <h1 style={{ font: '300 32px/1.2 Inter, sans-serif', color: '#e8f4ff', margin: '0 0 8px', letterSpacing: '-0.02em' }}>
+            Global Market Dashboard
+          </h1>
+          <p style={{ fontSize: 13, color: '#4d7a96', margin: '0 0 20px', maxWidth: 500, lineHeight: 1.7 }}>
+            Scan world indices, macro assets, and crypto. Then drill into any symbol for advanced charts, AI signals, and demo trading.
+          </p>
 
-          <div className="relative mt-6">
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-            </div>
+          {/* Search */}
+          <div style={{ position: 'relative', maxWidth: 560 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4d7a96" strokeWidth={2} style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)' }}>
+              <path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search Apple, Nvidia, Tesla, Bitcoin..."
-              className="w-full rounded-2xl border border-zinc-700 bg-zinc-900/85 pl-11 pr-4 py-4 text-sm text-zinc-100 outline-none transition focus:border-cyan-500"
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search Apple, Nvidia, Bitcoin, TATASTEEL..."
+              style={{
+                width: '100%', background: 'rgba(4,12,18,0.8)', border: '1px solid rgba(0,183,255,0.2)',
+                borderRadius: 10, padding: '12px 14px 12px 42px', fontSize: 14,
+                color: '#e8f4ff', outline: 'none', fontFamily: 'inherit',
+                transition: 'border-color 0.2s, box-shadow 0.2s', boxSizing: 'border-box',
+              }}
+              onFocus={(e) => { e.target.style.borderColor = 'rgba(0,212,255,0.5)'; e.target.style.boxShadow = '0 0 0 3px rgba(0,212,255,0.1)'; }}
+              onBlur={(e) => { e.target.style.borderColor = 'rgba(0,183,255,0.2)'; e.target.style.boxShadow = 'none'; }}
             />
-            {!!results.length && (
-              <div className="absolute left-0 right-0 top-full z-40 mt-3 overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/95 shadow-2xl shadow-black/40">
-                {results.map((item) => (
-                  <Link key={item.symbol} to={`/markets/${item.symbol}`} className="flex items-center justify-between px-4 py-3 hover:bg-zinc-800/80">
-                    <div>
-                      <div className="font-mono text-cyan-400">{item.symbol}</div>
-                      <div className="text-xs text-zinc-500">{item.name}</div>
-                    </div>
-                    <div className="text-right font-mono text-xs">
-                      <div className="text-zinc-100">${formatPrice(quotes[item.symbol]?.price)}</div>
-                      <div className={(quotes[item.symbol]?.change ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}>
-                        {formatChange((quotes[item.symbol]?.changePct ?? 0) * 100)}%
+
+            {/* Results dropdown */}
+            {results.length > 0 && (
+              <div style={{
+                position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
+                background: '#071018', border: '1px solid rgba(0,183,255,0.2)',
+                borderRadius: 10, overflow: 'hidden', boxShadow: '0 12px 48px rgba(0,0,0,0.7)', zIndex: 50,
+              }}>
+                {results.map((item) => {
+                  const q = quotes[item.symbol];
+                  const pos = (q?.change ?? 0) >= 0;
+                  return (
+                    <button
+                      key={item.symbol}
+                      type="button"
+                      onClick={() => navigate(`/markets/${item.symbol}`)}
+                      style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        width: '100%', padding: '11px 16px', background: 'transparent',
+                        border: 'none', borderBottom: '1px solid rgba(0,183,255,0.05)',
+                        cursor: 'pointer', textAlign: 'left', transition: 'background 0.15s',
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(0,183,255,0.06)'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <div>
+                        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 14, color: '#00d4ff', fontWeight: 700 }}>{item.symbol}</div>
+                        <div style={{ fontSize: 11, color: '#4d7a96', marginTop: 2 }}>{item.name}</div>
                       </div>
-                    </div>
-                  </Link>
-                ))}
+                      {q?.price != null && (
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#e8f4ff', fontWeight: 600 }}>${fmtP(q.price)}</div>
+                          <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: pos ? '#00e676' : '#ff3d57' }}>{fmtC(q.changePct, true)}</div>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
+      </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-[24px] border border-zinc-800/80 bg-zinc-900/55 p-4">
-            <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">Trending tickers</div>
-            <div className="mt-4 space-y-3">
-              {trending.map((item) => (
-                <Link key={item.symbol} to={`/markets/${item.symbol}`} className="flex items-center justify-between rounded-xl border border-zinc-800/70 bg-zinc-950/40 px-3 py-3 hover:border-cyan-500/30">
-                  <div>
-                    <div className="font-mono text-cyan-400">{item.symbol}</div>
-                    <div className="text-[11px] text-zinc-500">${formatPrice(item.price)}</div>
-                  </div>
-                  <div className={`font-mono text-xs ${(item.change ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {formatChange((item.changePct ?? 0) * 100)}%
-                  </div>
-                </Link>
+      {/* ── Quick Picks ──────────────────────────────────────── */}
+      <div>
+        <div style={{ fontSize: 10, color: '#3d607a', textTransform: 'uppercase', letterSpacing: '0.3em', fontFamily: 'JetBrains Mono, monospace', marginBottom: 12 }}>Quick Access · Top Markets</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 10 }}>
+          {QUICK_PICKS.map((s) => <QuickCard key={s} symbol={s} quote={quotes[s]} />)}
+        </div>
+      </div>
+
+      {/* ── Main grid: sections + trending sidebar ─────────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 280px', gap: 20, alignItems: 'start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {MARKET_GROUPS.map((section) => (
+            <div key={section.id}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                <span style={{ fontSize: 18 }}>{section.icon}</span>
+                <h2 style={{ font: '300 22px/1 Inter, sans-serif', color: '#e8f4ff', margin: 0 }}>{section.title}</h2>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+                {section.groups.map((group) => {
+                  const items = group.symbols.map((s) => searchMarkets(s)[0] || { symbol: s, name: s }).filter(Boolean);
+                  return <SectionTable key={group.title} title={group.title} items={items} quotes={quotes} />;
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ─ Trending sidebar ─ */}
+        <div style={{ position: 'sticky', top: 80, display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className="panel" style={{ padding: '16px 18px' }}>
+            <div className="panel-title">🔥 Trending</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {trending.length ? trending.map((item) => {
+                const pos = (item?.change ?? 0) >= 0;
+                return (
+                  <Link key={item.symbol} to={`/markets/${item.symbol}`} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '8px 10px', borderRadius: 8, textDecoration: 'none',
+                    background: 'rgba(0,183,255,0.03)', border: '1px solid rgba(0,183,255,0.08)',
+                    transition: 'all 0.2s',
+                  }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,183,255,0.07)'; e.currentTarget.style.borderColor = 'rgba(0,183,255,0.2)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,183,255,0.03)'; e.currentTarget.style.borderColor = 'rgba(0,183,255,0.08)'; }}
+                  >
+                    <div>
+                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, color: '#00d4ff', fontWeight: 700 }}>{item.symbol}</div>
+                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#4d7a96', marginTop: 1 }}>${fmtP(item.price)}</div>
+                    </div>
+                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: pos ? '#00e676' : '#ff3d57', fontWeight: 600 }}>
+                      {fmtC(item.changePct, true)}
+                    </span>
+                  </Link>
+                );
+              }) : (
+                <div style={{ fontSize: 12, color: '#3d607a', textAlign: 'center', padding: '12px 0' }}>Loading market data...</div>
+              )}
+            </div>
+          </div>
+
+          <div className="panel" style={{ padding: '16px 18px' }}>
+            <div className="panel-title">How to Use</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {[
+                { n: '1', text: 'Search any company or ticker' },
+                { n: '2', text: 'Open market page for charts, signals & demo trades' },
+                { n: '3', text: 'Track performance in Dashboard & Portfolio' },
+              ].map(({ n, text }) => (
+                <div key={n} style={{ display: 'flex', gap: 10, padding: '8px 0', borderBottom: '1px solid rgba(0,183,255,0.05)' }}>
+                  <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: '#00d4ff', fontWeight: 700, flexShrink: 0 }}>{n}.</span>
+                  <span style={{ fontSize: 12, color: '#4d7a96', lineHeight: 1.5 }}>{text}</span>
+                </div>
               ))}
             </div>
           </div>
-
-          <div className="rounded-[24px] border border-zinc-800/80 bg-zinc-900/55 p-4">
-            <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">How to use</div>
-            <div className="mt-4 space-y-3 text-sm text-zinc-400">
-              <div className="rounded-xl border border-zinc-800/70 bg-zinc-950/40 p-3">1. Search a company or ticker.</div>
-              <div className="rounded-xl border border-zinc-800/70 bg-zinc-950/40 p-3">2. Open its market page for chart, signals, and demo trade tools.</div>
-              <div className="rounded-xl border border-zinc-800/70 bg-zinc-950/40 p-3">3. Use Dashboard and Portfolio to monitor your simulated performance.</div>
-            </div>
-          </div>
-        </aside>
-      </section>
-
-      <section className="space-y-8">
-        {MARKET_GROUPS.map((section) => (
-          <div key={section.id} className="space-y-4">
-            <div>
-              <div className="text-[10px] uppercase tracking-[0.35em] text-zinc-500">{section.title}</div>
-              <h2 className="mt-2 text-2xl font-light text-zinc-100">{section.title}</h2>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-3">
-              {section.groups.map((group) => {
-                const items = group.symbols.map((symbol) => searchMarkets(symbol)[0] || { symbol, name: symbol }).filter(Boolean);
-                return <SectionTable key={group.title} title={group.title} items={items} quotes={quotes} />;
-              })}
-            </div>
-          </div>
-        ))}
-      </section>
+        </div>
+      </div>
     </div>
   );
 }
