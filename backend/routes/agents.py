@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.api.dependencies import get_cache_service, get_market_data_provider
-from backend.auth.jwt_handler import get_current_user
+from backend.auth.jwt_handler import get_current_user_optional
 from backend.cache.cache_service import CacheService
 from backend.db.models.user import User
 from backend.market.data_provider import MarketDataProvider
@@ -30,6 +30,7 @@ STRATEGY_ALIAS = {
     "execution": "execution",
     "executor": "execution",
     "llm": "llm",
+    "llm_strategy": "llm",
     "llm_strategist": "llm",
     "factor": "factor",
     "factor_model": "factor",
@@ -68,7 +69,7 @@ def _build_manager(provider: MarketDataProvider, cache: CacheService) -> AgentMa
 @router.post("/execute")
 def execute_agent(
     payload: ExecuteRequest,
-    _user: User = Depends(get_current_user),
+    user: Optional[User] = Depends(get_current_user_optional),
     provider: MarketDataProvider = Depends(get_market_data_provider),
     cache: CacheService = Depends(get_cache_service),
 ):
@@ -83,13 +84,18 @@ def execute_agent(
 
     execution_result = None
     action = str(signal.get("signal", "HOLD")).upper()
+    execution_mode = payload.execution_mode.strip().lower() or "paper"
+
+    if execution_mode == "live" and user is None:
+        raise HTTPException(status_code=401, detail="Login required for live execution")
+
     if payload.execute_trade and action in {"BUY", "SELL"}:
         raw_signal = {
             "symbol": symbol,
             "action": action,
             "quantity": float(payload.quantity),
             "price": float(signal.get("price", 0.0)),
-            "execution_mode": payload.execution_mode.strip().lower() or "paper",
+            "execution_mode": execution_mode,
         }
         execution_result = manager.route_signal_to_execution(raw_signal)
 
@@ -101,7 +107,7 @@ def execute_agent(
             "symbol": symbol,
             "signal": signal,
             "executed_trade": execution_result,
-            "execution_mode": payload.execution_mode.strip().lower() or "paper",
+            "execution_mode": execution_mode,
             "live_market_source": True,
         },
     }

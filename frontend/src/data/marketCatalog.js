@@ -175,7 +175,7 @@ const CATALOG = [
 ];
 
 export const MARKET_CATALOG = CATALOG;
-export const SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'SPY', 'QQQ', 'DIA', 'IWM', 'BTC-USD', 'ETH-USD'];
+export const SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'SPY', 'QQQ', 'DIA', 'IWM', 'VIX', 'BTC-USD', 'ETH-USD', 'TATASTEEL.NS'];
 
 export function getMarketProfile(symbol) {
   const normalized = String(symbol || '').trim().toUpperCase();

@@ -56,7 +56,7 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320, liveKl
     setUsedFallback(false);
     try {
       const timeoutPromise = new Promise((_, reject) => {
-        loadTimeoutRef.current = window.setTimeout(() => reject(new Error('timeout')), 25000);
+        loadTimeoutRef.current = window.setTimeout(() => reject(new Error('timeout')), 8000);
       });
       const response = await Promise.race([api.getOHLCV(symbol, period), timeoutPromise]);
       const rows =
@@ -93,7 +93,9 @@ export default function CandlestickChart({ symbol = 'AAPL', height = 320, liveKl
   
   // High-frequency partial kline rendering loop
   useEffect(() => {
-    if (!liveKline || !ohlcv.length) return;
+    // 1m Binance partial bars should only mutate the 1D view, otherwise
+    // they distort higher-timeframe candle history.
+    if (period !== '1D' || !liveKline || !ohlcv.length) return;
     setOhlcv(prev => {
         if (!prev.length) return prev;
         const out = [...prev];

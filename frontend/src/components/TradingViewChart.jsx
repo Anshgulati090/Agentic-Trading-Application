@@ -30,7 +30,7 @@ export default function TradingViewChart({
   const resolveTVSymbol = (sym) => {
     const s = sym.toUpperCase();
     // Indian exchanges
-    if (s.endsWith('.NS')) return `NSE:${s.replace('.NS', '')}`;
+    if (s.endsWith('.NS')) return `BSE:${s.replace('.NS', '')}`;
     if (s.endsWith('.BO')) return `BSE:${s.replace('.BO', '')}`;
     // Crypto pairs (BTC-USD -> CRYPTO:BTCUSD)
     if (s === 'BTC-USD') return 'CRYPTO:BTCUSD';
@@ -76,9 +76,8 @@ export default function TradingViewChart({
 <head>
   <meta charset="UTF-8">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { overflow: hidden; background: ${theme === 'dark' ? '#09090b' : '#ffffff'}; }
-    .tv-container { height: 100vh; width: 100vw; }
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; box-sizing: border-box; overflow: hidden; background: ${theme === 'dark' ? '#09090b' : '#ffffff'}; }
+    .tv-container { height: 100%; width: 100%; }
   </style>
 </head>
 <body>
@@ -168,7 +167,7 @@ export default function TradingViewChart({
         </div>
         <button
           type="button"
-          onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=${symbol}`, '_blank')}
+          onClick={() => window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(resolveTVSymbol(symbol))}`, '_blank')}
           className="text-[10px] font-mono text-blue-400 hover:text-blue-300 transition-colors"
         >
           Open Full Screen →

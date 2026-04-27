@@ -1,4 +1,8 @@
-version: '3.8'
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 services:
   # =============================================================================
@@ -12,7 +16,6 @@ services:
     container_name: agentic-trading-backend
     ports:
       - "8000:8000"
-      - "9090:9090"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/agentic
       - REDIS_URL=redis://redis:6379/0
@@ -26,18 +29,21 @@ services:
       - ./logs:/app/logs
       - ./data:/app/data
       - ./models:/app/models
+    init: true
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    logging: *default-logging
     networks:
       - agentic-network
 
@@ -55,12 +61,15 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    init: true
     restart: unless-stopped
+    stop_grace_period: 60s
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agentic"]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     networks:
       - agentic-network
 
@@ -75,12 +84,15 @@ services:
       - redis_data:/data
     ports:
       - "6379:6379"
+    init: true
     restart: unless-stopped
+    stop_grace_period: 30s
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging: *default-logging
     networks:
       - agentic-network
 
@@ -94,9 +106,19 @@ services:
     container_name: agentic-frontend
     ports:
       - "3000:80"
+    init: true
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
+    stop_grace_period: 20s
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
     networks:
       - agentic-network
 
@@ -110,7 +132,15 @@ services:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
     ports:
       - "9090:9090"
+    init: true
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
     networks:
       - agentic-network
 
@@ -124,9 +154,18 @@ services:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
     ports:
       - "3001:3000"
+    init: true
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging: *default-logging
     networks:
       - agentic-network
 

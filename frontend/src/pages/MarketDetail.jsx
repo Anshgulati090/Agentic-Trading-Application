@@ -21,6 +21,30 @@ const fmtVol = (v) => {
   return String(n);
 };
 
+const SYMBOL_ALIAS = {
+  '^VIX': 'VIX',
+  '%5EVIX': 'VIX',
+};
+const SUPPORTED_BINANCE_SYMBOLS = new Set([
+  'BTC-USD',
+  'ETH-USD',
+  'SOL-USD',
+  'BNB-USD',
+  'XRP-USD',
+  'DOGE-USD',
+  'ADA-USD',
+]);
+
+function normalizeRouteSymbol(rawSymbol) {
+  const decoded = decodeURIComponent(String(rawSymbol || 'AAPL').trim()).toUpperCase();
+  return SYMBOL_ALIAS[decoded] || decoded || 'AAPL';
+}
+
+function supportsTradingViewPro(symbol) {
+  // TradingView widget supports VIX, Indian markets (.NS, .BO), etc through resolveTVSymbol mapping
+  return true;
+}
+
 function SignalBadge({ signal }) {
   if (!signal) return null;
   const cls = { BUY: 'badge-buy', SELL: 'badge-sell', HOLD: 'badge-hold', REJECTED: 'badge-hold' };
@@ -157,7 +181,7 @@ function DemoTradePanel({ symbol, currentPrice }) {
 
 export default function MarketDetail() {
   const { symbol } = useParams();
-  const activeSymbol = (symbol || 'AAPL').toUpperCase();
+  const activeSymbol = useMemo(() => normalizeRouteSymbol(symbol), [symbol]);
   const [priceData, setPriceData] = useState(null);
   const [info, setInfo] = useState(null);
   const [technicals, setTechnicals] = useState(null);
@@ -165,9 +189,11 @@ export default function MarketDetail() {
   // Default to simple candles — loads instantly. User can switch to TradingView Pro.
   const [chartType, setChartType] = useState(() => localStorage.getItem('chartType') || 'simple');
   const { messages, status } = useSignalStream(activeSymbol, 20);
+  const showTradingView = chartType === 'tradingview' && supportsTradingViewPro(activeSymbol);
+  const binanceSymbol = SUPPORTED_BINANCE_SYMBOLS.has(activeSymbol) ? activeSymbol : '';
   
   // High-performance Binance WebSocket Engine hook
-  const { trade, kline } = useBinanceLive(activeSymbol);
+  const { trade, kline } = useBinanceLive(binanceSymbol);
 
   const loadQuoteRef = useRef(null);
   const loadPrice = useCallback(async () => {
@@ -330,10 +356,15 @@ export default function MarketDetail() {
                 </button>
               ))}
             </div>
-            {chartType === 'tradingview' && (
+            {showTradingView && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#00e676', fontFamily: 'JetBrains Mono, monospace' }}>
                 <span className="live-dot" />
                 Professional Charting Active
+              </div>
+            )}
+            {chartType === 'tradingview' && !showTradingView && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#ffb300', fontFamily: 'JetBrains Mono, monospace' }}>
+                TradingView unavailable for this symbol. Using Simple Candles.
               </div>
             )}
           </div>
@@ -343,12 +374,12 @@ export default function MarketDetail() {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
               <span style={{ fontSize: 10, color: '#3d607a', textTransform: 'uppercase', letterSpacing: '0.25em', fontFamily: 'JetBrains Mono, monospace' }}>PRICE CHART · {activeSymbol}</span>
               <span style={{ fontSize: 10, color: '#3d607a', fontFamily: 'JetBrains Mono, monospace' }}>
-                {chartType === 'tradingview' ? 'ADVANCED TECHNICAL ANALYSIS' : 'SIMPLE CANDLESTICK'}
+                {showTradingView ? 'ADVANCED TECHNICAL ANALYSIS' : 'SIMPLE CANDLESTICK'}
               </span>
             </div>
-            {chartType === 'tradingview'
+            {showTradingView
               ? <TradingViewChart symbol={activeSymbol} height={520} theme="dark" interval="D" />
-              : <CandlestickChart symbol={activeSymbol} height={400} liveKline={kline} />
+              : <CandlestickChart symbol={activeSymbol} height={400} liveKline={binanceSymbol ? kline : null} />
             }
           </div>
 

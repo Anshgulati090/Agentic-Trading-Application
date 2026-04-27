@@ -131,6 +131,8 @@ app.include_router(agents_router, prefix="/agents", tags=["Agents"])
 app.include_router(market_router, prefix="/market", tags=["Market"])
 app.include_router(health_router, tags=["Health"])
 app.include_router(ws_signals_router, prefix="/ws", tags=["WebSocket"])
+# Backward-compatible alias for clients still connecting to /signals/{symbol}
+app.include_router(ws_signals_router, tags=["WebSocket Legacy"])
 app.include_router(ws_stream_router, prefix="/ws", tags=["WebSocket Stream"])
 app.include_router(ws_binance_router, prefix="/ws", tags=["Binance WebSocket"])
 app.include_router(research_router)

@@ -7,6 +7,7 @@ import logging
 import math
 from functools import lru_cache
 import time
+from urllib.parse import unquote
 
 from backend.services.market_engine import live_cache
 
@@ -15,6 +16,9 @@ logger = logging.getLogger("MarketRoutes")
 # Symbol mapping for special Yahoo Finance symbols
 SYMBOL_MAPPING = {
     "VIX": "^VIX",  # CBOE Volatility Index
+    "^VIX": "^VIX",
+    "%5EVIX": "^VIX",
+    "$VIX": "^VIX",
     "DJI": "^DJI",  # Dow Jones Industrial Average
     "IXIC": "^IXIC",  # NASDAQ Composite
     "GSPC": "^GSPC",  # S&P 500 Index
@@ -33,7 +37,8 @@ SYMBOL_MAPPING = {
 
 def normalize_symbol(symbol: str) -> str:
     """Convert frontend symbol to Yahoo Finance compatible symbol"""
-    return SYMBOL_MAPPING.get(symbol.upper(), symbol)
+    cleaned = unquote(str(symbol or "")).upper().strip()
+    return SYMBOL_MAPPING.get(cleaned, cleaned)
 
 def clean_float(val: Any) -> Optional[float]:
     if val is None:
@@ -218,28 +223,64 @@ def get_price(symbol: str):
 
         logger.info(f"Fetching price for {original_symbol} (Yahoo: {yahoo_symbol})")
 
-        ticker = yf.Ticker(yahoo_symbol)
+        import requests
+        price, prev_close, open_price, day_high, day_low, volume = None, None, None, None, None, None
+        spark = []
 
-        # Prefer fast_info for low-latency quote data
-        fast_info = getattr(ticker, "fast_info", {}) or {}
-        price = clean_float(fast_info.get("last_price") or fast_info.get("last") or fast_info.get("regular_market_price"))
-        prev_close = clean_float(fast_info.get("previous_close") or fast_info.get("previousClose"))
-        open_price = clean_float(fast_info.get("open"))
-        day_high = clean_float(fast_info.get("day_high") or fast_info.get("high"))
-        day_low = clean_float(fast_info.get("day_low") or fast_info.get("low"))
-        volume = clean_float(fast_info.get("volume"))
+        try:
+            url = f"https://query2.finance.yahoo.com/v8/finance/chart/{yahoo_symbol}?interval=1d&range=1mo"
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            res = requests.get(url, headers=headers, timeout=5)
+            if res.status_code == 200:
+                body = res.json()
+                result = body.get("chart", {}).get("result", [])
+                if result:
+                    meta = result[0].get("meta", {})
+                    indicators = result[0].get("indicators", {}).get("quote", [{}])[0]
+                    timestamps = result[0].get("timestamp", [])
+                    
+                    price = clean_float(meta.get("regularMarketPrice"))
+                    prev_close = clean_float(meta.get("chartPreviousClose") or meta.get("regularMarketPreviousClose"))
+                    open_price = clean_float(meta.get("regularMarketOpen") or price)
+                    day_high = clean_float(meta.get("regularMarketDayHigh") or price)
+                    day_low = clean_float(meta.get("regularMarketDayLow") or price)
+                    volume = clean_float(meta.get("regularMarketVolume"))
+                    
+                    closes = indicators.get("close", [])
+                    for i, ts in enumerate(timestamps):
+                        if i < len(closes) and closes[i] is not None:
+                            spark.append({"time": ts, "close": round(float(closes[i]), 4)})
+        except Exception as e:
+            logger.warning(f"Fast chart API failed for {original_symbol}: {e}")
 
-        # Fallback to recent history if fast_info is incomplete
-        hist = ticker.history(period="2d")
-        if (price is None or prev_close is None) and hist is not None and not hist.empty:
-            latest = hist.iloc[-1]
-            prev = hist.iloc[-2] if len(hist) > 1 else hist.iloc[-1]
-            price = clean_float(latest.get("Close"))
-            prev_close = clean_float(prev.get("Close"))
-            open_price = clean_float(latest.get("Open", price))
-            day_high = clean_float(latest.get("High", price))
-            day_low = clean_float(latest.get("Low", price))
-            volume = clean_float(latest.get("Volume", 0.0))
+        if price is None or prev_close is None:
+            ticker = yf.Ticker(yahoo_symbol)
+            fast_info = getattr(ticker, "fast_info", {}) or {}
+            price = clean_float(fast_info.get("last_price") or fast_info.get("last") or fast_info.get("regular_market_price"))
+            prev_close = clean_float(fast_info.get("previous_close") or fast_info.get("previousClose"))
+            open_price = clean_float(fast_info.get("open"))
+            day_high = clean_float(fast_info.get("day_high") or fast_info.get("high"))
+            day_low = clean_float(fast_info.get("day_low") or fast_info.get("low"))
+            volume = clean_float(fast_info.get("volume"))
+
+            hist = ticker.history(period="2d")
+            if (price is None or prev_close is None) and hist is not None and not hist.empty:
+                latest = hist.iloc[-1]
+                prev = hist.iloc[-2] if len(hist) > 1 else hist.iloc[-1]
+                price = clean_float(latest.get("Close"))
+                prev_close = clean_float(prev.get("Close"))
+                open_price = clean_float(latest.get("Open", price))
+                day_high = clean_float(latest.get("High", price))
+                day_low = clean_float(latest.get("Low", price))
+                volume = clean_float(latest.get("Volume", 0.0))
+
+            hist_short = ticker.history(period="1mo", interval="1d")
+            if hist_short is not None and not hist_short.empty:
+                for ts, row in hist_short.tail(30).iterrows():
+                    spark.append({
+                        "time": int(ts.timestamp()),
+                        "close": round(float(row["Close"]), 4),
+                    })
 
         if price is None or prev_close is None:
             raise HTTPException(
@@ -248,18 +289,7 @@ def get_price(symbol: str):
             )
 
         change = float(price) - float(prev_close)
-        # Return change_pct as decimal (e.g., 0.0123 = 1.23%)
         change_pct = (change / float(prev_close)) if prev_close else 0.0
-
-        # Build lightweight sparkline history (last 30 closes)
-        spark = []
-        hist_short = ticker.history(period="1mo", interval="1d")
-        if hist_short is not None and not hist_short.empty:
-            for ts, row in hist_short.tail(30).iterrows():
-                spark.append({
-                    "time": int(ts.timestamp()),
-                    "close": round(float(row["Close"]), 4),
-                })
 
         data = {
             "symbol": original_symbol,
@@ -301,15 +331,51 @@ def get_prices_bulk(symbols: str):
     FastAPI threadpool starvation on the Global Markets dashboard.
     """
     import concurrent.futures
-    
+
     sym_list = [s.strip() for s in symbols.split(',') if s.strip()]
     if not sym_list:
         return format_success_response({})
-        
+
     results = {}
+    now_ts = time.time()
+
+    # Fast path: serve from live cache / recent in-memory cache first.
+    for sym in sym_list:
+        normalized = sym.upper()
+        live_tick = live_cache.get_tick(normalized)
+        if live_tick:
+            results[sym] = {
+                "symbol": normalized,
+                "price": round(float(live_tick.get("price", 0.0)), 2),
+                "change": round(float(live_tick.get("change", 0.0)), 2),
+                "change_pct": round(float(live_tick.get("change_pct", 0.0)), 6),
+                "volume": int(live_tick.get("volume", 0) or 0),
+                "open": round(float(live_tick.get("price", 0.0)), 2),
+                "high": round(float(live_tick.get("price", 0.0)), 2),
+                "low": round(float(live_tick.get("price", 0.0)), 2),
+                "prev_close": round(float(live_tick.get("price", 0.0) - live_tick.get("change", 0.0)), 2),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "history": [],
+                "source": "live_cache",
+            }
+            continue
+
+        cached = _price_cache.get(normalized)
+        if cached:
+            cached_data, cached_at = cached
+            if (now_ts - cached_at) < _PRICE_TTL_SECONDS:
+                results[sym] = {**cached_data, "source": "cache_fallback"}
+
+    unresolved = [sym for sym in sym_list if sym not in results]
+    if not unresolved:
+        return format_success_response(results)
+
+    # We use a larger executor and longer timeout so the UI actually receives all quotes
+    # instead of timing out and displaying missing "$-" values.
+    max_workers = min(max(len(unresolved), 1), 40)
+    timeout_seconds = 25.0
+    # Process all requested symbols without truncating
     
-    # We use ThreadPoolExecutor to bound the blocking yfinance calls 
-    # without choking FastAPI's primary worker pool.
     def fetch_single(sym):
         try:
             # Reusing the existing robust function safely bypasses duplicate logic
@@ -317,13 +383,66 @@ def get_prices_bulk(symbols: str):
         except Exception:
             return sym, None
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_sym = {executor.submit(fetch_single, sym): sym for sym in sym_list}
-        for future in concurrent.futures.as_completed(future_to_sym):
-            sym, data = future.result()
-            if data:
-                results[sym] = data
-                
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=max_workers)
+    try:
+        future_to_sym = {executor.submit(fetch_single, sym): sym for sym in unresolved}
+
+        try:
+            for future in concurrent.futures.as_completed(future_to_sym, timeout=timeout_seconds):
+                sym, data = future.result()
+                if data:
+                    results[sym] = data
+        except concurrent.futures.TimeoutError:
+            logger.warning(
+                "bulk_price_timeout_partial",
+                extra={"extra_data": {"requested": len(unresolved), "returned": len(results), "timeout_seconds": timeout_seconds}},
+            )
+
+        for future, sym in future_to_sym.items():
+            if sym in results:
+                continue
+            if future.done():
+                try:
+                    _, data = future.result()
+                    if data:
+                        results[sym] = data
+                        continue
+                except Exception:
+                    pass
+            else:
+                future.cancel()
+    finally:
+        # Do not block response on slow upstream fetchers.
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    # Fast fallback layer: live cache first, then in-memory price cache
+    for sym in sym_list:
+        if sym in results:
+            continue
+        normalized = sym.upper()
+        live_tick = live_cache.get_tick(normalized)
+        if live_tick:
+            results[sym] = {
+                "symbol": normalized,
+                "price": round(float(live_tick.get("price", 0.0)), 2),
+                "change": round(float(live_tick.get("change", 0.0)), 2),
+                "change_pct": round(float(live_tick.get("change_pct", 0.0)), 6),
+                "volume": int(live_tick.get("volume", 0) or 0),
+                "open": round(float(live_tick.get("price", 0.0)), 2),
+                "high": round(float(live_tick.get("price", 0.0)), 2),
+                "low": round(float(live_tick.get("price", 0.0)), 2),
+                "prev_close": round(float(live_tick.get("price", 0.0) - live_tick.get("change", 0.0)), 2),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "history": [],
+                "source": "live_cache",
+            }
+            continue
+
+        cached = _price_cache.get(normalized)
+        if cached:
+            cached_data, _ = cached
+            results[sym] = {**cached_data, "source": "cache_fallback"}
+
     return format_success_response(results)
 
 

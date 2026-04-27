@@ -2,11 +2,29 @@ export function resolveWsBase() {
   const configured = import.meta.env.VITE_WS_URL;
   if (configured) {
     if (configured.startsWith('ws://') || configured.startsWith('wss://')) {
-      return configured.replace(/\/$/, '');
+      try {
+        const parsed = new URL(configured);
+        const path = (parsed.pathname || '/').replace(/\/+$/, '');
+        if (!path || path === '' || path === '/') {
+          parsed.pathname = '/ws';
+        } else if (path.endsWith('/signals') || path === '/signals') {
+          parsed.pathname = '/ws';
+        } else if (path.endsWith('/ws')) {
+          parsed.pathname = path;
+        } else {
+          parsed.pathname = `${path}/ws`;
+        }
+        return parsed.toString().replace(/\/$/, '');
+      } catch {
+        const trimmed = configured.replace(/\/$/, '');
+        return trimmed.endsWith('/ws') ? trimmed : `${trimmed}/ws`;
+      }
     }
     if (configured.startsWith('/')) {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${protocol}//${window.location.host}${configured}`.replace(/\/$/, '');
+      const trimmed = configured.replace(/\/$/, '');
+      const path = trimmed.endsWith('/ws') ? trimmed : `${trimmed}/ws`;
+      return `${protocol}//${window.location.host}${path}`;
     }
   }
 
@@ -34,7 +52,8 @@ export const WS_STATUS = {
 
 export class SignalWebSocket {
   constructor(symbol, onMessage, onStatusChange) {
-    this.symbol = symbol;
+    const raw = decodeURIComponent(String(symbol ?? '').trim());
+    this.symbol = raw === '^VIX' || raw === '%5EVIX' ? 'VIX' : raw;
     this.onMessage = onMessage;
     this.onStatusChange = onStatusChange;
     this.ws = null;
@@ -55,7 +74,7 @@ export class SignalWebSocket {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) return;
     this._setStatus(WS_STATUS.CONNECTING);
     try {
-      this.ws = new WebSocket(`${WS_BASE}/signals/${this.symbol}`);
+      this.ws = new WebSocket(`${WS_BASE}/signals/${encodeURIComponent(this.symbol)}`);
     } catch {
       this._setStatus(WS_STATUS.ERROR);
       this._scheduleReconnect();

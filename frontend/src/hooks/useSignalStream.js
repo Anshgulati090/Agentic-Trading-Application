@@ -10,7 +10,6 @@ function buildMessageKey(message) {
   return [
     message?.symbol || '',
     message?.signal || message?.action || '',
-    normalizePrice(message?.price),
     message?.agent || '',
   ].join('|');
 }

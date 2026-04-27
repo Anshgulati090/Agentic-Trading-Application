@@ -16,6 +16,7 @@ import MarketDetail from './pages/MarketDetail';
 import Portfolio from './pages/Portfolio';
 import Learn from './pages/Learn';
 import Agents from './pages/Agents';
+import AgentDetail from './pages/AgentDetail';
 import Profile from './pages/Profile';
 import VerifyEmail from './pages/VerifyEmail';
 
@@ -48,6 +49,7 @@ function AppLayout() {
           <Route path="/markets/:symbol" element={<MarketDetail />} />
           <Route path="/learn" element={<Learn />} />
           <Route path="/agents" element={<Agents />} />
+          <Route path="/agents/:agentId" element={<AgentDetail />} />
 
           {/* Dashboard & Portfolio */}
           <Route path="/dashboard" element={<Dashboard />} />

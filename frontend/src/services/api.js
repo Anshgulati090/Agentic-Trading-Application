@@ -37,7 +37,11 @@ async function request(path, options = {}, token = null, attempt = 0) {
     clearTimeout(timeout);
     if (!res.ok) {
       let errMsg = `HTTP ${res.status}`;
-      try { const body = await res.json(); errMsg = body.detail || body.message || errMsg; } catch {}
+      try { 
+        const body = await res.json(); 
+        const detail = body.detail || body.message || errMsg; 
+        errMsg = typeof detail === 'string' ? detail : JSON.stringify(detail);
+      } catch {}
       const method = (options.method || 'GET').toUpperCase();
       if (res.status >= 500 && RETRYABLE_METHODS.has(method) && attempt < MAX_RETRIES) {
         await sleep(RETRY_DELAY_MS * (attempt + 1));
@@ -127,13 +131,19 @@ export const api = {
   refillDemoBalance: async (mode = 'free') => unwrap(await authReq('/profile/refill', { method: 'POST', body: JSON.stringify({ mode }) })),
 
   // Agents
-  executeAgent: (payload) => authReq('/agents/execute', { method: 'POST', body: JSON.stringify(payload) }),
+  executeAgent: (payload) => {
+    const token = getToken();
+    if (token) {
+      return request('/agents/execute', { method: 'POST', body: JSON.stringify(payload) }, token);
+    }
+    return request('/agents/execute', { method: 'POST', body: JSON.stringify(payload) });
+  },
 
   // AI assistant
   askAssistant: async (message) => unwrap(await request('/ai/assistant', { method: 'POST', body: JSON.stringify({ message }) })),
 };
 
-export const SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'SPY', 'QQQ', 'DIA', 'IWM', 'BTC-USD', 'ETH-USD'];
+export const SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'SPY', 'QQQ', 'DIA', 'IWM', 'VIX', 'BTC-USD', 'ETH-USD', 'TATASTEEL.NS'];
 
 export const BROKERS = [
   { name: 'Alpaca', url: 'https://alpaca.markets', description: 'Commission-free stock trading API', logo: '🦙' },

@@ -130,6 +130,23 @@ class BinanceLiveEngine:
                 logger.warning(f"Binance Stream {symbol} TIMEOUT (Heartbeat missed). Reconnecting <800ms...")
                 await asyncio.sleep(0.5)
             except Exception as e:
+                error_text = str(e)
+                if "fail_connection" in error_text:
+                    logger.error(
+                        f"Binance Stream {symbol}: incompatible websocket client detected ({error_text}). "
+                        "Disabling stream for this symbol to avoid retry storms."
+                    )
+                    self._broadcast(symbol, {
+                        "type": "error",
+                        "data": {
+                            "symbol": symbol,
+                            "reason": "binance_stream_unavailable",
+                            "detail": error_text,
+                        },
+                    })
+                    self.active_streams.discard(symbol)
+                    break
+
                 consecutive_failures += 1
                 backoff = min(2 ** (consecutive_failures - 1), MAX_BACKOFF)
                 if consecutive_failures <= MAX_RETRIES:

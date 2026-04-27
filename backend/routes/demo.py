@@ -14,7 +14,7 @@ router = APIRouter(prefix="/demo", tags=["Demo Trading"])
 # ── Schemas ────────────────────────────────────────────────────────────────
 
 class TradeRequest(BaseModel):
-    symbol: str = Field(..., min_length=1, max_length=10)
+    symbol: str = Field(..., min_length=1, max_length=20)
     action: Literal["BUY", "SELL"]
     quantity: float = Field(..., gt=0)
     price: float = Field(..., gt=0) # Kept for backward compatibility, but overridden by server
@@ -71,15 +71,33 @@ def get_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from backend.routes.market import get_prices_bulk
+
     acct = _get_account(db, current_user)
     positions = db.query(DemoPosition).filter(
         DemoPosition.account_id == acct.id,
         DemoPosition.quantity > 0,
     ).all()
 
-    total_invested = sum(p.quantity * p.avg_cost for p in positions)
-    # Use avg_cost as a proxy for current price when no live feed
-    total_value = acct.balance + total_invested
+    symbols_to_fetch = ",".join([p.symbol for p in positions])
+    prices_data = get_prices_bulk(symbols_to_fetch)["data"] if symbols_to_fetch else {}
+
+    pos_out = []
+    total_invested = 0.0
+    total_market_value = 0.0
+
+    for p in positions:
+        total_invested += p.quantity * p.avg_cost
+        
+        symbol_data = prices_data.get(p.symbol, {})
+        current_price = symbol_data.get("price")
+        if current_price is None:
+            current_price = p.avg_cost
+            
+        pos_out.append(_position_out(p, float(current_price)))
+        total_market_value += p.quantity * float(current_price)
+
+    total_value = acct.balance + total_market_value
 
     return AccountOut(
         balance=acct.balance,
@@ -87,8 +105,8 @@ def get_account(
         total_invested=total_invested,
         total_value=total_value,
         total_pnl=total_value - acct.initial_balance,
-        total_pnl_pct=(total_value - acct.initial_balance) / acct.initial_balance,
-        positions=[_position_out(p, p.avg_cost) for p in positions],
+        total_pnl_pct=(total_value - acct.initial_balance) / acct.initial_balance if acct.initial_balance else 0.0,
+        positions=pos_out,
     )
 
 

@@ -8,7 +8,7 @@ const PULSE_SYMBOLS = [
   { symbol: 'DIA',     label: 'DOW' },
   { symbol: 'BTC-USD', label: 'BITCOIN' },
   { symbol: 'GLD',     label: 'GOLD' },
-  { symbol: '^VIX',    label: 'VIX' },
+  { symbol: 'VIX',     label: 'VIX' },
   { symbol: 'ETH-USD', label: 'ETHEREUM' },
   { symbol: 'NVDA',    label: 'NVDA' },
   { symbol: 'AAPL',    label: 'AAPL' },

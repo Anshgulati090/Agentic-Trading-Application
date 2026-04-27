@@ -5,7 +5,7 @@ import { api, SYMBOLS } from '../services/api';
 import { usePolling } from '../hooks/usePolling';
 import { useSignalStream } from '../hooks/useSignalStream';
 import { WS_STATUS } from '../services/websocket';
-import CandlestickChart from '../components/CandlestickChart';
+import TradingViewChart from '../components/TradingViewChart';
 import { safeArray } from '../utils/safeApi';
 
 function Panel({ title, children, className = '', action }) {
@@ -42,43 +42,13 @@ function MarketTicker({ onSelect }) {
   const [selected, setSelected] = useState('AAPL');
   const fetchPrices = async () => {
     try {
-      // Stagger symbol fetches in batches to avoid browser overload
-      const batchSize = 3;
+      const payload = await api.getMarketPrices(SYMBOLS);
       const result = {};
-      for (let i = 0; i < SYMBOLS.length; i += batchSize) {
-        // Add delay between batches (except first)
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 400));
+      for (const symbol of SYMBOLS) {
+        const quote = payload?.[symbol];
+        if (quote && Number.isFinite(Number(quote.price))) {
+          result[symbol] = quote;
         }
-        const batch = SYMBOLS.slice(i, i + batchSize);
-        const settled = await Promise.allSettled(
-          batch.map((symbol) =>
-            fetch(`/api/market/price/${symbol}`, { signal: AbortSignal.timeout(8000) })
-              .then(async (r) => {
-                if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                return r.json();
-              })
-              .then((json) => {
-                const quote = json?.data || json;
-                // Validate we got a valid price
-                if (!Number.isFinite(quote?.price)) {
-                  console.warn(`Invalid price data for ${symbol}:`, quote);
-                }
-                return [symbol, quote];
-              })
-          )
-        );
-        settled.forEach((res) => {
-          if (res.status === 'fulfilled') {
-            const [symbol, quote] = res.value;
-            if (Number.isFinite(quote?.price)) {
-              result[symbol] = quote;
-            }
-          } else {
-            const symbol = batch[settled.indexOf(res)];
-            console.warn(`Failed to fetch price for ${symbol}:`, res.reason?.message || res.reason);
-          }
-        });
       }
       return result;
     } catch (error) {
@@ -507,7 +477,7 @@ export default function Dashboard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '3fr 1.3fr', gap: 14 }}>
         <Panel title={`Price Chart · ${chartSymbol}`} action={<Link to={`/markets/${chartSymbol}`} style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#3d607a' }}>full market page</Link>}>
-          <CandlestickChart symbol={chartSymbol} height={360} />
+          <TradingViewChart symbol={chartSymbol} height={360} />
         </Panel>
         <Panel title="Learning Hub" action={<Link to="/learn" style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: '#3d607a' }}>all lessons</Link>}>
           <div style={{ fontSize: 12, color: '#4d7a96', marginBottom: 12, lineHeight: 1.7 }}>
